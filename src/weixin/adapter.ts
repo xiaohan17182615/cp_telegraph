@@ -176,7 +176,7 @@ export class WeixinAdapter {
 export function normalizeMessage(account: StoredWeixinAccount, raw: WeixinMessage): InboundMessage | null {
   if (raw.message_type === MessageType.BOT) return null;
   const senderId = raw.from_user_id?.trim();
-  if (!senderId || senderId === account.userId || senderId === account.accountId) return null;
+  if (!senderId || senderId === account.accountId) return null;
   const roomId = raw.group_id || raw.room_id || raw.chat_room_id;
   const conversationKind = roomId ? "group" : "direct";
   const conversationId = roomId || senderId;
