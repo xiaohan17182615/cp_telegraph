@@ -131,14 +131,14 @@ export class WechatCodexBridge {
     const route = this.routeFor(message);
     const cwd = route.cwd ?? this.config.cwd;
     this.upsertRoute(message.routeKey, { lastPrompt: prompt, cwd });
-    await this.reply(message, "Codex is working...");
+    if (this.config.workingNotice) await this.reply(message, "Codex is working...");
     this.setTyping(message, TypingStatus.TYPING);
     try {
       const attachmentNote = message.attachments.length > 0
         ? `\n\nIncoming WeChat attachments:\n${message.attachments.map(formatAttachmentForPrompt).join("\n")}`
         : "";
       const result = await this.codex.run(message.routeKey, {
-        prompt: `${prompt}${attachmentNote}`,
+        prompt: buildCodexPrompt(prompt, attachmentNote),
         cwd,
         threadId: route.codexThreadId,
         onProgress: (text) => {
@@ -166,6 +166,7 @@ export class WechatCodexBridge {
       `cwd: ${route.cwd ?? this.config.cwd}`,
       `codex_thread: ${route.codexThreadId ?? "new"}`,
       `context_token: ${route.contextToken ? "cached" : "none"}`,
+      `working_notice: ${this.config.workingNotice ? "on" : "off"}`,
     ].join("\n");
   }
 
@@ -236,4 +237,21 @@ function formatAttachmentForPrompt(item: InboundMessage["attachments"][number]):
   if (item.sizeBytes) parts.push(`bytes=${item.sizeBytes}`);
   if (item.downloadError) parts.push(`download_error=${item.downloadError}`);
   return parts.join(" ");
+}
+
+function buildCodexPrompt(userPrompt: string, attachmentNote: string): string {
+  return [
+    "WeChat reply style:",
+    "- Reply in the user's language unless they ask otherwise.",
+    "- Put the direct answer first. Avoid long preambles, meta commentary, and internal implementation details.",
+    "- Default to a compact WeChat shape: conclusion first, then 2-5 short bullets or short paragraphs.",
+    "- Keep routine answers under about 800 Chinese characters or 500 English words unless the user asks for depth.",
+    "- Avoid tables and long link lists. If sources are useful, add one short reference line with at most 2 links.",
+    "- For real-time lookups, say the exact date/time of the result and the answer; keep caveats short.",
+    "- For code/server work, summarize outcome, key changed paths, verification result, and any required user action.",
+    "",
+    "User message:",
+    userPrompt,
+    attachmentNote,
+  ].filter((part) => part !== "").join("\n");
 }

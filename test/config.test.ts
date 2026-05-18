@@ -11,8 +11,25 @@ test("loadConfig applies safe defaults", () => {
   assert.equal(config.botAgent, "WechatCodexBridge/0.1.0");
   assert.equal(config.downloadMedia, true);
   assert.equal(config.typingEnabled, true);
+  assert.equal(config.workingNotice, false);
   assert.equal(config.mediaMaxBytes, 100 * 1024 * 1024);
-  assert.deepEqual(config.codexExecArgs, ["--json", "--skip-git-repo-check"]);
+  assert.deepEqual(config.codexExecArgs, [
+    "--json",
+    "-m",
+    "gpt-5.5",
+    "-c",
+    "model_reasoning_effort=xhigh",
+    "--skip-git-repo-check",
+  ]);
+  assert.deepEqual(config.codexResumeArgs, [
+    "--json",
+    "-m",
+    "gpt-5.5",
+    "-c",
+    "model_reasoning_effort=xhigh",
+    "--skip-git-repo-check",
+    "--all",
+  ]);
 });
 
 test("loadConfig parses args and tilde paths", () => {

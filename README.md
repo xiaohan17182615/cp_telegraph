@@ -65,14 +65,15 @@ WECHAT_CODEX_GROUP_TRIGGER=@codex
 WECHAT_CODEX_DOWNLOAD_MEDIA=true
 WECHAT_CODEX_MEDIA_MAX_BYTES=104857600
 WECHAT_CODEX_TYPING_ENABLED=true
+WECHAT_CODEX_WORKING_NOTICE=false
 WECHAT_CODEX_HOME=~/.wechat-codex-bridge
 ```
 
 Codex 参数可以按需调整：
 
 ```bash
-WECHAT_CODEX_EXEC_ARGS="--json --skip-git-repo-check"
-WECHAT_CODEX_RESUME_ARGS="--json --skip-git-repo-check --all"
+WECHAT_CODEX_EXEC_ARGS='--json -m gpt-5.5 -c model_reasoning_effort="xhigh" --skip-git-repo-check'
+WECHAT_CODEX_RESUME_ARGS='--json -m gpt-5.5 -c model_reasoning_effort="xhigh" --skip-git-repo-check --all'
 ```
 
 ## 服务化运行
