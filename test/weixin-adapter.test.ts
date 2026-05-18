@@ -27,8 +27,17 @@ test("normalizeMessage creates direct text route", () => {
   assert.equal(message?.contextToken, "ctx-1");
 });
 
-test("normalizeMessage drops self and bot messages", () => {
-  assert.equal(normalizeMessage(account, { from_user_id: "self", item_list: [] }), null);
+test("normalizeMessage keeps login user messages but drops bot messages", () => {
+  const raw: WeixinMessage = {
+    message_id: "m-self",
+    from_user_id: "self",
+    message_type: MessageType.USER,
+    item_list: [{ type: MessageItemType.TEXT, text_item: { text: "from login user" } }],
+  };
+  const message = normalizeMessage(account, raw);
+  assert.equal(message?.senderId, "self");
+  assert.equal(message?.text, "from login user");
+  assert.equal(normalizeMessage(account, { from_user_id: "bot-a", item_list: [] }), null);
   assert.equal(normalizeMessage(account, { from_user_id: "friend", message_type: MessageType.BOT, item_list: [] }), null);
 });
 
