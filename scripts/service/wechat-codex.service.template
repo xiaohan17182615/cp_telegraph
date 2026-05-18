@@ -1,0 +1,15 @@
+[Unit]
+Description=WeChat Codex Bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/wechat-codex-bridge
+EnvironmentFile=-/opt/wechat-codex-bridge/config/wechat-codex.env
+ExecStart=/usr/bin/npm run serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
