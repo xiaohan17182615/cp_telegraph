@@ -8,6 +8,7 @@ export interface RouteState {
   codexThreadId?: string;
   cwd?: string;
   lastPrompt?: string;
+  contextToken?: string;
   updatedAt: string;
 }
 
@@ -42,6 +43,7 @@ export class JsonStateStore {
       codexThreadId: current?.codexThreadId,
       cwd: current?.cwd,
       lastPrompt: current?.lastPrompt,
+      contextToken: current?.contextToken,
       updatedAt: new Date().toISOString(),
     });
   }
