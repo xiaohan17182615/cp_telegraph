@@ -3,6 +3,7 @@ import type { AppConfig } from "../config.js";
 import { JsonStateStore, type RouteState } from "../state.js";
 import { sanitizeError } from "../util/text.js";
 import { WeixinAdapter, type InboundMessage } from "../weixin/adapter.js";
+import { TypingStatus } from "../weixin/types.js";
 import { parseCommand, helpText } from "./commands.js";
 import { CodexRunner } from "./codex-runner.js";
 import { PairingManager, parsePairCommand } from "./pairing.js";
@@ -131,9 +132,10 @@ export class WechatCodexBridge {
     const cwd = route.cwd ?? this.config.cwd;
     this.upsertRoute(message.routeKey, { lastPrompt: prompt, cwd });
     await this.reply(message, "Codex is working...");
+    this.setTyping(message, TypingStatus.TYPING);
     try {
       const attachmentNote = message.attachments.length > 0
-        ? `\n\nIncoming WeChat attachments: ${message.attachments.map((item) => `${item.kind}:${item.name ?? item.id}`).join(", ")}`
+        ? `\n\nIncoming WeChat attachments:\n${message.attachments.map(formatAttachmentForPrompt).join("\n")}`
         : "";
       const result = await this.codex.run(message.routeKey, {
         prompt: `${prompt}${attachmentNote}`,
@@ -147,6 +149,8 @@ export class WechatCodexBridge {
       await this.reply(message, result.text);
     } catch (error) {
       await this.reply(message, `Codex failed: ${sanitizeError(error)}`);
+    } finally {
+      this.setTyping(message, TypingStatus.CANCEL);
     }
   }
 
@@ -215,4 +219,21 @@ export class WechatCodexBridge {
     const contextToken = message.contextToken ?? this.routeFor(message).contextToken;
     await this.weixin.sendText(message.conversationId, content, contextToken);
   }
+
+  private setTyping(message: InboundMessage, status: number): void {
+    if (message.conversationKind !== "direct") return;
+    const contextToken = message.contextToken ?? this.routeFor(message).contextToken;
+    void this.weixin.sendTyping(message.senderId, contextToken, status).catch((error) => {
+      if (this.config.debug) console.error(`[weixin:typing] ${sanitizeError(error)}`);
+    });
+  }
+}
+
+function formatAttachmentForPrompt(item: InboundMessage["attachments"][number]): string {
+  const parts = [`- ${item.kind}:${item.name ?? item.id}`];
+  if (item.localPath) parts.push(`path=${item.localPath}`);
+  if (item.mimeType) parts.push(`mime=${item.mimeType}`);
+  if (item.sizeBytes) parts.push(`bytes=${item.sizeBytes}`);
+  if (item.downloadError) parts.push(`download_error=${item.downloadError}`);
+  return parts.join(" ");
 }
