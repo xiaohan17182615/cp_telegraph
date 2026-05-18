@@ -30,6 +30,7 @@ export class WechatCodexBridge {
 
   private async handleMessage(message: InboundMessage): Promise<void> {
     const route = this.state.getRoute(message.routeKey);
+    if (message.contextToken) this.upsertRoute(message.routeKey, { contextToken: message.contextToken });
     const pairCode = parsePairCommand(message.text);
     if (pairCode) {
       await this.handlePair(message, pairCode);
@@ -57,10 +58,10 @@ export class WechatCodexBridge {
     const result = this.pairing.verify(message.routeKey, code);
     if (result.ok) {
       this.state.trustRoute(message.routeKey);
-      await this.weixin.sendText(message.conversationId, "Paired. This chat is now allowed to use Codex.");
+      await this.reply(message, "Paired. This chat is now allowed to use Codex.");
       return;
     }
-    await this.weixin.sendText(message.conversationId, `Pairing failed: ${result.reason}. Check the terminal for the latest code.`);
+    await this.reply(message, `Pairing failed: ${result.reason}. Check the terminal for the latest code.`);
   }
 
   private async challenge(message: InboundMessage): Promise<void> {
@@ -72,45 +73,42 @@ export class WechatCodexBridge {
       `code: ${challenge.code}`,
       `expires: ${new Date(challenge.expiresAt).toISOString()}`,
     ].join("\n"));
-    await this.weixin.sendText(
-      message.conversationId,
-      "This WeChat chat is not paired yet. Check the terminal running wechat-codex, then send `/pair <code>` here.",
-    );
+    await this.reply(message, "This WeChat chat is not paired yet. Check the terminal running wechat-codex, then send `/pair <code>` here.");
   }
 
   private async handleCommand(message: InboundMessage, name: string, args: string[]): Promise<void> {
     if (name === "help") {
-      await this.weixin.sendText(message.conversationId, helpText());
+      await this.reply(message, helpText());
       return;
     }
     if (name === "status") {
-      await this.weixin.sendText(message.conversationId, this.statusText(message));
+      await this.reply(message, this.statusText(message));
       return;
     }
     if (name === "routes") {
-      await this.weixin.sendText(message.conversationId, this.routesText());
+      await this.reply(message, this.routesText());
       return;
     }
     if (name === "new") {
       const cwd = args.length > 0 ? path.resolve(args.join(" ")) : undefined;
       this.upsertRoute(message.routeKey, { codexThreadId: undefined, cwd });
-      await this.weixin.sendText(message.conversationId, `New Codex thread will be used for this chat.${cwd ? `\ncwd: ${cwd}` : ""}`);
+      await this.reply(message, `New Codex thread will be used for this chat.${cwd ? `\ncwd: ${cwd}` : ""}`);
       return;
     }
     if (name === "cwd") {
       if (args.length === 0) {
-        await this.weixin.sendText(message.conversationId, `Current cwd: ${this.routeFor(message).cwd ?? this.config.cwd}`);
+        await this.reply(message, `Current cwd: ${this.routeFor(message).cwd ?? this.config.cwd}`);
         return;
       }
       const cwd = path.resolve(args.join(" "));
       this.upsertRoute(message.routeKey, { cwd });
-      await this.weixin.sendText(message.conversationId, `Working directory set:\n${cwd}`);
+      await this.reply(message, `Working directory set:\n${cwd}`);
       return;
     }
     if (name === "retry") {
       const lastPrompt = this.routeFor(message).lastPrompt;
       if (!lastPrompt) {
-        await this.weixin.sendText(message.conversationId, "No previous prompt for this chat.");
+        await this.reply(message, "No previous prompt for this chat.");
         return;
       }
       await this.runCodex(message, lastPrompt);
@@ -118,21 +116,21 @@ export class WechatCodexBridge {
     }
     if (name === "stop") {
       const stopped = this.codex.stop(message.routeKey);
-      await this.weixin.sendText(message.conversationId, stopped ? "Stop signal sent to Codex." : "No running Codex task for this chat.");
+      await this.reply(message, stopped ? "Stop signal sent to Codex." : "No running Codex task for this chat.");
       return;
     }
-    await this.weixin.sendText(message.conversationId, `Unknown command: /${name}\nSend /help for available commands.`);
+    await this.reply(message, `Unknown command: /${name}\nSend /help for available commands.`);
   }
 
   private async runCodex(message: InboundMessage, prompt: string): Promise<void> {
     if (this.codex.isBusy(message.routeKey)) {
-      await this.weixin.sendText(message.conversationId, "Codex is still working on this chat. Send /stop to interrupt, or wait for the result.");
+      await this.reply(message, "Codex is still working on this chat. Send /stop to interrupt, or wait for the result.");
       return;
     }
     const route = this.routeFor(message);
     const cwd = route.cwd ?? this.config.cwd;
     this.upsertRoute(message.routeKey, { lastPrompt: prompt, cwd });
-    await this.weixin.sendText(message.conversationId, "Codex is working...");
+    await this.reply(message, "Codex is working...");
     try {
       const attachmentNote = message.attachments.length > 0
         ? `\n\nIncoming WeChat attachments: ${message.attachments.map((item) => `${item.kind}:${item.name ?? item.id}`).join(", ")}`
@@ -146,9 +144,9 @@ export class WechatCodexBridge {
         },
       });
       this.upsertRoute(message.routeKey, { codexThreadId: result.threadId, cwd });
-      await this.weixin.sendText(message.conversationId, result.text);
+      await this.reply(message, result.text);
     } catch (error) {
-      await this.weixin.sendText(message.conversationId, `Codex failed: ${sanitizeError(error)}`);
+      await this.reply(message, `Codex failed: ${sanitizeError(error)}`);
     }
   }
 
@@ -163,6 +161,7 @@ export class WechatCodexBridge {
       `busy: ${this.codex.isBusy(message.routeKey) ? "yes" : "no"}`,
       `cwd: ${route.cwd ?? this.config.cwd}`,
       `codex_thread: ${route.codexThreadId ?? "new"}`,
+      `context_token: ${route.contextToken ? "cached" : "none"}`,
     ].join("\n");
   }
 
@@ -207,7 +206,13 @@ export class WechatCodexBridge {
       codexThreadId: has("codexThreadId") ? patch.codexThreadId : current?.codexThreadId,
       cwd: has("cwd") ? patch.cwd : current?.cwd,
       lastPrompt: has("lastPrompt") ? patch.lastPrompt : current?.lastPrompt,
+      contextToken: has("contextToken") ? patch.contextToken : current?.contextToken,
       updatedAt: new Date().toISOString(),
     });
+  }
+
+  private async reply(message: InboundMessage, content: string): Promise<void> {
+    const contextToken = message.contextToken ?? this.routeFor(message).contextToken;
+    await this.weixin.sendText(message.conversationId, content, contextToken);
   }
 }
