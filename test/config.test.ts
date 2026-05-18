@@ -8,6 +8,7 @@ test("loadConfig applies safe defaults", () => {
   const config = loadConfig({}, process.cwd());
   assert.equal(config.pairingRequired, true);
   assert.equal(config.groupTrigger, "@codex");
+  assert.equal(config.botAgent, "WechatCodexBridge/0.1.0");
   assert.deepEqual(config.codexExecArgs, ["--json", "--skip-git-repo-check"]);
 });
 
