@@ -43,6 +43,7 @@ export class CodexRunner {
       env: process.env,
       shell: process.platform === "win32" && /\.(cmd|bat)$/i.test(this.config.codexBin),
     });
+    child.stdin.end();
     this.active.set(routeKey, child);
     if (input.signal) {
       input.signal.addEventListener("abort", () => child.kill("SIGTERM"), { once: true });
