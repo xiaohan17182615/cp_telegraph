@@ -5,7 +5,7 @@
 ## 特性
 
 - 微信扫码登录，保存本地 token，不需要把 token 放进代码仓库。
-- 每个微信私聊/群聊维护独立 Codex 线程，后续消息会自动 resume。
+- 每个微信私聊维护独立 Codex 线程，后续消息会自动 resume；群聊按 iLink 返回的 `group_id` 做 best-effort 支持。
 - 默认启用会话配对：第一次使用必须在运行桥接的终端读取验证码，再在微信发送 `/pair <code>`。
 - 群聊默认只响应 `@codex` 开头的普通任务，避免群内所有消息都触发本地 Codex。
 - 支持 `/new`、`/cwd`、`/retry`、`/stop`、`/status`、`/routes` 等微信内命令。
@@ -57,6 +57,7 @@ npm run serve
 ```bash
 WECHAT_CODEX_CWD=/path/to/workspace
 WECHAT_CODEX_BIN=codex
+WECHAT_CODEX_BOT_AGENT=WechatCodexBridge/0.1.0
 WECHAT_CODEX_PAIRING_REQUIRED=true
 WECHAT_CODEX_GROUP_TRIGGER=@codex
 WECHAT_CODEX_HOME=~/.wechat-codex-bridge
@@ -93,6 +94,6 @@ powershell -ExecutionPolicy Bypass -File scripts/service/install-windows-task.ps
 
 这个项目会把微信消息转交给本地 Codex CLI，本质上等同于允许已配对微信聊天远程触发本机命令行智能体。建议只在自己的机器和可信微信聊天中使用，保持默认配对开启，不要把账号 token、`.env`、状态目录或 Codex 凭据提交到仓库。
 
-微信 iLink 接口不是稳定公开 API，接口行为可能变化；本项目只做个人桥接研究和自用自动化，不保证长期兼容。
+微信 iLink 是腾讯 `@tencent-weixin/openclaw-weixin` 官方插件正在使用的 Bot 通信通道，整体比旧式逆向微信协议更正规、更稳定。本项目是对 iLink HTTP 协议的独立轻量实现，不直接依赖官方插件，因此会跟随官方插件和后端协议变化进行兼容更新；群聊能力也以官方实际返回和能力声明为准。
 
 更多说明见 `docs/security.md` 和 `docs/architecture.md`。
