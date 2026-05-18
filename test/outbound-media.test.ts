@@ -1,0 +1,28 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import sharp from "sharp";
+import { prepareMediaFileForUpload } from "../src/weixin/outbound-media.js";
+
+test("prepareMediaFileForUpload renders SVG as opaque PNG", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wechat-codex-outbound-"));
+  const svgPath = path.join(tmp, "poster.svg");
+  fs.writeFileSync(svgPath, [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="320" viewBox="0 0 240 320">',
+    '<rect width="240" height="320" fill="none"/>',
+    '<circle cx="120" cy="160" r="90" fill="rgba(20,90,160,.55)"/>',
+    '<text x="120" y="172" text-anchor="middle" font-size="36" fill="#111">南京</text>',
+    "</svg>",
+  ].join(""));
+
+  const prepared = await prepareMediaFileForUpload(svgPath, path.join(tmp, "uploads"));
+  const metadata = await sharp(prepared.filePath).metadata();
+
+  assert.equal(prepared.mimeType, "image/png");
+  assert.equal(path.extname(prepared.filePath), ".png");
+  assert.equal(metadata.width, 240);
+  assert.equal(metadata.height, 320);
+  assert.equal(metadata.hasAlpha, false);
+});
