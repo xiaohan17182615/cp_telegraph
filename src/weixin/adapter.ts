@@ -21,6 +21,7 @@ export interface InboundMessage {
   messageId: string;
   text: string;
   attachments: InboundAttachment[];
+  contextToken?: string;
   timestamp: string;
   raw: WeixinMessage;
 }
@@ -50,17 +51,21 @@ export class WeixinAdapter {
     const account = this.store.getDefaultAccount();
     if (!account) throw new Error("No WeChat account. Run `wechat-codex login` first.");
     this.account = account;
-    this.client = new WeixinClient({ baseUrl: account.baseUrl || this.config.baseUrl });
+    this.client = new WeixinClient({ baseUrl: account.baseUrl || this.config.baseUrl, botAgent: this.config.botAgent });
     this.running = true;
     void this.client.notifyStart({ token: account.token, timeoutMs: 10_000 }).catch(() => undefined);
     let syncCursor = account.syncCursor ?? "";
+    let longPollTimeoutMs = this.config.longPollTimeoutMs;
     while (this.running) {
       try {
         const response = await this.client.getUpdates({
           token: account.token,
           syncCursor,
-          timeoutMs: this.config.longPollTimeoutMs,
+          timeoutMs: longPollTimeoutMs,
         });
+        if (Number.isFinite(response.longpolling_timeout_ms) && Number(response.longpolling_timeout_ms) > 0) {
+          longPollTimeoutMs = Number(response.longpolling_timeout_ms);
+        }
         const nextCursor = response.get_updates_buf ?? response.sync_buf ?? syncCursor;
         if (nextCursor !== syncCursor) {
           syncCursor = nextCursor;
@@ -86,13 +91,13 @@ export class WeixinAdapter {
     if (account && client) void client.notifyStop({ token: account.token, timeoutMs: 5000 }).catch(() => undefined);
   }
 
-  async sendText(conversationId: string, content: string): Promise<void> {
+  async sendText(conversationId: string, content: string, contextToken?: string): Promise<void> {
     const account = this.account ?? this.store.getDefaultAccount();
     if (!account) throw new Error("No WeChat account. Run login first.");
-    const client = this.client ?? new WeixinClient({ baseUrl: account.baseUrl || this.config.baseUrl });
+    const client = this.client ?? new WeixinClient({ baseUrl: account.baseUrl || this.config.baseUrl, botAgent: this.config.botAgent });
     for (const chunk of splitForWeChat(content, this.config.maxMessageBytes)) {
       await this.enqueue(async () => {
-        const body = buildTextMessage(conversationId, chunk);
+        const body = buildTextMessage(conversationId, chunk, contextToken);
         await retry(async () => client.sendMessage({ token: account.token, body, timeoutMs: 30_000 }), 3);
       });
     }
@@ -135,16 +140,18 @@ export function normalizeMessage(account: StoredWeixinAccount, raw: WeixinMessag
     messageId: String(raw.message_id ?? raw.client_id ?? raw.seq ?? Date.now()),
     text,
     attachments,
+    contextToken: raw.context_token,
     timestamp: new Date(raw.create_time_ms ?? Date.now()).toISOString(),
     raw,
   };
 }
 
-function buildTextMessage(toUserId: string, text: string): WeixinSendMessageRequest {
+function buildTextMessage(toUserId: string, text: string, contextToken?: string): WeixinSendMessageRequest {
   return {
     msg: {
       from_user_id: "",
       to_user_id: toUserId,
+      context_token: contextToken,
       client_id: `wechat-codex-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       message_type: MessageType.BOT,
       message_state: MessageState.FINISH,
