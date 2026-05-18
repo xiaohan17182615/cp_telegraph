@@ -1,0 +1,39 @@
+{
+  "name": "wechat-codex-bridge",
+  "version": "0.1.0",
+  "description": "A secure WeChat iLink bridge for local OpenAI Codex CLI.",
+  "type": "module",
+  "license": "MIT",
+  "main": "dist/src/index.js",
+  "bin": {
+    "wechat-codex": "dist/src/cli.js"
+  },
+  "files": [
+    "dist/**/*.js",
+    "README.md",
+    "LICENSE",
+    "config",
+    "docs",
+    "scripts"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "dev": "tsx src/cli.ts",
+    "login": "npm run build && node dist/src/cli.js login",
+    "serve": "npm run build && node dist/src/cli.js serve",
+    "doctor": "npm run build && node dist/src/cli.js doctor",
+    "status": "npm run build && node dist/src/cli.js status"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
