@@ -4,3 +4,4 @@ dist/
 .DS_Store
 *.log
 .wechat-codex-bridge/
+official/
