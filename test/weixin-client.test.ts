@@ -32,3 +32,31 @@ test("WeixinClient sends auth headers and base_info", async () => {
   assert.equal(body.msg.to_user_id, "friend");
   assert.equal(body.base_info.bot_agent, "WechatCodexBridge/0.1.0");
 });
+
+test("WeixinClient treats long-poll abort as empty updates", async () => {
+  const fetchImpl: FetchLike = async () => {
+    const error = new Error("aborted");
+    error.name = "AbortError";
+    throw error;
+  };
+  const client = new WeixinClient({ baseUrl: "https://example.test", fetchImpl });
+  const response = await client.getUpdates({ token: "token", syncCursor: "cursor" });
+  assert.deepEqual(response, { ret: 0, msgs: [], get_updates_buf: "cursor" });
+});
+
+test("WeixinClient supports getconfig and sendtyping", async () => {
+  const calls: Array<{ input: string | URL; init?: RequestInit }> = [];
+  const fetchImpl: FetchLike = async (input, init) => {
+    calls.push({ input, init });
+    const url = String(input);
+    const body = url.endsWith("/getconfig") ? { ret: 0, typing_ticket: "ticket" } : { ret: 0 };
+    return new Response(JSON.stringify(body), { status: 200 });
+  };
+  const client = new WeixinClient({ baseUrl: "https://example.test", fetchImpl });
+  const config = await client.getConfig({ token: "token", ilinkUserId: "friend", contextToken: "ctx" });
+  assert.equal(config.typing_ticket, "ticket");
+  await client.sendTyping({ token: "token", ilinkUserId: "friend", typingTicket: "ticket", status: 1 });
+  assert.equal(String(calls[0]?.input), "https://example.test/ilink/bot/getconfig");
+  assert.equal(String(calls[1]?.input), "https://example.test/ilink/bot/sendtyping");
+  assert.equal(JSON.parse(String(calls[1]?.init?.body)).typing_ticket, "ticket");
+});
