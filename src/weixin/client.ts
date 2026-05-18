@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 import type {
   GetConfigResponse,
+  GetUploadUrlRequest,
+  GetUploadUrlResponse,
   GetUpdatesResponse,
   QrStartResponse,
   QrStatusResponse,
@@ -90,6 +92,24 @@ export class WeixinClient {
       },
     });
     assertSuccess(response, "sendmessage");
+    return response;
+  }
+
+  async getUploadUrl(params: {
+    token: string;
+    body: GetUploadUrlRequest;
+    timeoutMs?: number;
+  }): Promise<GetUploadUrlResponse> {
+    const response = await this.postJson<GetUploadUrlResponse>({
+      endpoint: "ilink/bot/getuploadurl",
+      token: params.token,
+      timeoutMs: params.timeoutMs,
+      body: {
+        ...params.body,
+        base_info: this.baseInfo(),
+      },
+    });
+    assertSuccess(response, "getuploadurl");
     return response;
   }
 

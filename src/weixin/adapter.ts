@@ -3,6 +3,7 @@ import { splitForWeChat } from "../util/text.js";
 import { WeixinAccountStore, type StoredWeixinAccount } from "./account-store.js";
 import { WeixinClient } from "./client.js";
 import { downloadMessageItemMedia } from "./media.js";
+import { sendMediaFile } from "./outbound-media.js";
 import { MessageItemType, MessageState, MessageType, TypingStatus, type WeixinMessage, type WeixinMessageItem, type WeixinSendMessageRequest } from "./types.js";
 
 export interface InboundAttachment {
@@ -107,6 +108,25 @@ export class WeixinAdapter {
         await retry(async () => client.sendMessage({ token: account.token, body, timeoutMs: 30_000 }), 3);
       });
     }
+  }
+
+  async sendMedia(conversationId: string, filePath: string, contextToken?: string, caption?: string): Promise<void> {
+    const account = this.account ?? this.store.getDefaultAccount();
+    if (!account) throw new Error("No WeChat account. Run login first.");
+    const client = this.client ?? new WeixinClient({ baseUrl: account.baseUrl || this.config.baseUrl, botAgent: this.config.botAgent });
+    await this.enqueue(async () => {
+      await sendMediaFile({
+        client,
+        token: account.token,
+        toUserId: conversationId,
+        filePath,
+        contextToken,
+        cdnBaseUrl: this.config.cdnBaseUrl,
+        uploadsDir: this.config.uploadsDir,
+        maxBytes: this.config.mediaMaxBytes,
+        caption,
+      });
+    });
   }
 
   async sendTyping(ilinkUserId: string, contextToken: string | undefined, status: number = TypingStatus.TYPING): Promise<void> {

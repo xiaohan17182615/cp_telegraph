@@ -7,6 +7,8 @@ import { TypingStatus } from "../weixin/types.js";
 import { parseCommand, helpText } from "./commands.js";
 import { CodexRunner } from "./codex-runner.js";
 import { PairingManager, parsePairCommand } from "./pairing.js";
+import { createFallbackPoster, posterReadyText } from "./poster.js";
+import { extractArtifactPaths, isImageArtifactRequest, isPlaceholderArtifactReply, stripArtifactDirectives } from "./artifacts.js";
 
 export class WechatCodexBridge {
   private readonly state: JsonStateStore;
@@ -146,7 +148,7 @@ export class WechatCodexBridge {
         },
       });
       this.upsertRoute(message.routeKey, { codexThreadId: result.threadId, cwd });
-      await this.reply(message, result.text);
+      await this.replyWithArtifacts(message, prompt, cwd, result.text);
     } catch (error) {
       await this.reply(message, `Codex failed: ${sanitizeError(error)}`);
     } finally {
@@ -221,6 +223,33 @@ export class WechatCodexBridge {
     await this.weixin.sendText(message.conversationId, content, contextToken);
   }
 
+  private async replyWithArtifacts(message: InboundMessage, prompt: string, cwd: string, text: string): Promise<void> {
+    const contextToken = message.contextToken ?? this.routeFor(message).contextToken;
+    const artifacts = extractArtifactPaths(text, cwd);
+    let replyText = stripArtifactDirectives(text);
+    if (artifacts.length === 0 && isImageArtifactRequest(prompt)) {
+      const poster = await createFallbackPoster(prompt, cwd);
+      artifacts.push(poster.path);
+      if (!replyText || isPlaceholderArtifactReply(replyText)) replyText = posterReadyText(prompt);
+    } else if (!replyText && artifacts.length > 0) {
+      replyText = "已生成文件，下面发送。";
+    } else if (!replyText) {
+      replyText = text.trim();
+    }
+    if (replyText) await this.weixin.sendText(message.conversationId, replyText, contextToken);
+    for (const artifactPath of artifacts.slice(0, 3)) {
+      try {
+        await this.weixin.sendMedia(message.conversationId, artifactPath, contextToken);
+      } catch (error) {
+        await this.weixin.sendText(
+          message.conversationId,
+          `Artifact generated but media send failed: ${sanitizeError(error)}\n${artifactPath}`,
+          contextToken,
+        );
+      }
+    }
+  }
+
   private setTyping(message: InboundMessage, status: number): void {
     if (message.conversationKind !== "direct") return;
     const contextToken = message.contextToken ?? this.routeFor(message).contextToken;
@@ -249,6 +278,8 @@ function buildCodexPrompt(userPrompt: string, attachmentNote: string): string {
     "- Avoid tables and long link lists. If sources are useful, add one short reference line with at most 2 links.",
     "- For real-time lookups, say the exact date/time of the result and the answer; keep caveats short.",
     "- For code/server work, summarize outcome, key changed paths, verification result, and any required user action.",
+    "- This Codex CLI environment cannot call ChatGPT imagegen. For poster/image requests, create a real local SVG/PNG artifact under ./wechat-codex-artifacts and finish with `ARTIFACT: <absolute path>`.",
+    "- Never reply only with future-tense tool plans such as 'I will use imagegen'. Create the artifact or clearly say why it cannot be created.",
     "",
     "User message:",
     userPrompt,

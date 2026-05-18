@@ -3,7 +3,7 @@
 The bridge has four small layers:
 
 1. `WeixinClient` talks to the iLink bot endpoints for QR login, long polling, and text sending.
-2. `WeixinAdapter` converts raw WeChat messages into stable inbound route objects, downloads inbound media, sends typing state, and serializes outbound text delivery.
+2. `WeixinAdapter` converts raw WeChat messages into stable inbound route objects, downloads inbound media, sends typing state, and serializes outbound text/media delivery.
 3. `WechatCodexBridge` handles pairing, group triggers, commands, per-chat route state, and Codex task dispatch.
 4. `CodexRunner` starts `codex exec` or `codex exec resume`, reads JSONL output, stores the thread id, and returns the final assistant text to WeChat.
 
@@ -39,4 +39,4 @@ flowchart LR
 - Group prompts require `WECHAT_CODEX_GROUP_TRIGGER` by default; commands still use `/...`.
 - The latest inbound WeChat `context_token` is cached per route and echoed in outbound replies, matching Tencent's plugin protocol contract.
 - Inbound media is downloaded and AES-128-ECB decrypted when `WECHAT_CODEX_DOWNLOAD_MEDIA=true`; Codex receives local paths in the prompt metadata.
-- Outbound media upload is intentionally deferred because it requires the full `getuploadurl -> encrypted CDN upload -> media item send` pipeline.
+- Outbound artifact delivery uses the full `getuploadurl -> AES-128-ECB encrypted CDN upload -> media item send` pipeline. SVG artifacts are rendered to PNG before image delivery.

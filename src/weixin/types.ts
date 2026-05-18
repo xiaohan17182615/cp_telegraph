@@ -20,6 +20,13 @@ export const TypingStatus = {
   CANCEL: 2,
 } as const;
 
+export const UploadMediaType = {
+  IMAGE: 1,
+  VIDEO: 2,
+  FILE: 3,
+  VOICE: 4,
+} as const;
+
 export interface CdnMedia {
   encrypt_query_param?: string;
   aes_key?: string;
@@ -90,6 +97,29 @@ export interface SendMessageResponse {
 
 export interface WeixinSendMessageRequest {
   msg: WeixinMessage;
+}
+
+export interface GetUploadUrlRequest {
+  filekey?: string;
+  media_type?: number;
+  to_user_id?: string;
+  rawsize?: number;
+  rawfilemd5?: string;
+  filesize?: number;
+  thumb_rawsize?: number;
+  thumb_rawfilemd5?: string;
+  thumb_filesize?: number;
+  no_need_thumb?: boolean;
+  aeskey?: string;
+}
+
+export interface GetUploadUrlResponse {
+  ret?: number;
+  errcode?: number;
+  errmsg?: string;
+  upload_param?: string;
+  thumb_upload_param?: string;
+  upload_full_url?: string;
 }
 
 export interface GetConfigResponse {

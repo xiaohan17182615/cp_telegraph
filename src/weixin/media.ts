@@ -76,7 +76,11 @@ function buildCdnDownloadUrl(encryptedQueryParam: string | undefined, cdnBaseUrl
   return `${cdnBaseUrl.replace(/\/+$/, "")}/download?encrypted_query_param=${encodeURIComponent(encryptedQueryParam)}`;
 }
 
-function parseAesKey(value: string | undefined): Buffer | undefined {
+export function buildCdnUploadUrl(params: { uploadParam: string; filekey: string; cdnBaseUrl: string }): string {
+  return `${params.cdnBaseUrl.replace(/\/+$/, "")}/upload?encrypted_query_param=${encodeURIComponent(params.uploadParam)}&filekey=${encodeURIComponent(params.filekey)}`;
+}
+
+export function parseAesKey(value: string | undefined): Buffer | undefined {
   if (!value) return undefined;
   const decoded = Buffer.from(value, "base64");
   if (decoded.length === 16) return decoded;
@@ -86,9 +90,19 @@ function parseAesKey(value: string | undefined): Buffer | undefined {
   return undefined;
 }
 
+export function encryptAesEcb(plaintext: Buffer, key: Buffer): Buffer {
+  const cipher = crypto.createCipheriv("aes-128-ecb", key, null);
+  return Buffer.concat([cipher.update(plaintext), cipher.final()]);
+}
+
 function decryptAesEcb(ciphertext: Buffer, key: Buffer): Buffer {
   const decipher = crypto.createDecipheriv("aes-128-ecb", key, null);
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+}
+
+export function aesEcbPaddedSize(size: number): number {
+  const remainder = size % 16;
+  return size + (remainder === 0 ? 16 : 16 - remainder);
 }
 
 async function saveInboundMedia(
@@ -113,9 +127,10 @@ function safeFileName(value: string): string {
   return value.trim().replace(/[<>:"/\\|?*\x00-\x1f]+/g, "-").replace(/\s+/g, " ").slice(0, 160) || "media.bin";
 }
 
-function mimeFromFilename(filename: string): string {
+export function mimeFromFilename(filename: string): string {
   const ext = path.extname(filename).toLowerCase();
   const table: Record<string, string> = {
+    ".svg": "image/svg+xml",
     ".png": "image/png",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
@@ -127,6 +142,8 @@ function mimeFromFilename(filename: string): string {
     ".wav": "audio/wav",
     ".silk": "audio/silk",
     ".pdf": "application/pdf",
+    ".html": "text/html",
+    ".htm": "text/html",
     ".txt": "text/plain",
     ".csv": "text/csv",
     ".zip": "application/zip",

@@ -60,3 +60,31 @@ test("WeixinClient supports getconfig and sendtyping", async () => {
   assert.equal(String(calls[1]?.input), "https://example.test/ilink/bot/sendtyping");
   assert.equal(JSON.parse(String(calls[1]?.init?.body)).typing_ticket, "ticket");
 });
+
+test("WeixinClient supports getuploadurl", async () => {
+  const calls: Array<{ input: string | URL; init?: RequestInit }> = [];
+  const fetchImpl: FetchLike = async (input, init) => {
+    calls.push({ input, init });
+    return new Response(JSON.stringify({ ret: 0, upload_param: "upload-param" }), { status: 200 });
+  };
+  const client = new WeixinClient({ baseUrl: "https://example.test", fetchImpl });
+  const response = await client.getUploadUrl({
+    token: "token",
+    body: {
+      filekey: "filekey",
+      media_type: 1,
+      to_user_id: "friend",
+      rawsize: 12,
+      rawfilemd5: "md5",
+      filesize: 16,
+      no_need_thumb: true,
+      aeskey: "00112233445566778899aabbccddeeff",
+    },
+  });
+  assert.equal(response.upload_param, "upload-param");
+  assert.equal(String(calls[0]?.input), "https://example.test/ilink/bot/getuploadurl");
+  const body = JSON.parse(String(calls[0]?.init?.body));
+  assert.equal(body.filekey, "filekey");
+  assert.equal(body.no_need_thumb, true);
+  assert.equal(body.base_info.bot_agent, "WechatCodexBridge/0.1.0");
+});
