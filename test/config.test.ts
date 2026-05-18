@@ -1,0 +1,23 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import os from "node:os";
+import path from "node:path";
+import { loadConfig } from "../src/config.js";
+
+test("loadConfig applies safe defaults", () => {
+  const config = loadConfig({}, process.cwd());
+  assert.equal(config.pairingRequired, true);
+  assert.equal(config.groupTrigger, "@codex");
+  assert.deepEqual(config.codexExecArgs, ["--json", "--skip-git-repo-check"]);
+});
+
+test("loadConfig parses args and tilde paths", () => {
+  const config = loadConfig({
+    WECHAT_CODEX_HOME: "~/bridge",
+    WECHAT_CODEX_EXEC_ARGS: '--json --cd "C:\\Work Dir"',
+    WECHAT_CODEX_GROUP_TRIGGER: "",
+  } as NodeJS.ProcessEnv, process.cwd());
+  assert.equal(config.homeDir, path.join(os.homedir(), "bridge"));
+  assert.deepEqual(config.codexExecArgs, ["--json", "--cd", "C:\\Work Dir"]);
+  assert.equal(config.groupTrigger, "");
+});
