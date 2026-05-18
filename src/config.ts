@@ -20,6 +20,9 @@ export interface AppConfig {
   minSendIntervalMs: number;
   maxMessageBytes: number;
   longPollTimeoutMs: number;
+  downloadMedia: boolean;
+  mediaMaxBytes: number;
+  typingEnabled: boolean;
   groupTrigger: string;
   debug: boolean;
 }
@@ -50,6 +53,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, cwd = process.c
     minSendIntervalMs: positiveInt(env.WECHAT_CODEX_MIN_SEND_INTERVAL_MS, 1500),
     maxMessageBytes: positiveInt(env.WECHAT_CODEX_MAX_MESSAGE_BYTES, 1800),
     longPollTimeoutMs: positiveInt(env.WECHAT_CODEX_LONG_POLL_TIMEOUT_MS, 35_000),
+    downloadMedia: parseBoolean(env.WECHAT_CODEX_DOWNLOAD_MEDIA, true),
+    mediaMaxBytes: positiveInt(env.WECHAT_CODEX_MEDIA_MAX_BYTES, 100 * 1024 * 1024),
+    typingEnabled: parseBoolean(env.WECHAT_CODEX_TYPING_ENABLED, true),
     groupTrigger: env.WECHAT_CODEX_GROUP_TRIGGER === undefined ? "@codex" : env.WECHAT_CODEX_GROUP_TRIGGER.trim(),
     debug: parseBoolean(env.WECHAT_CODEX_DEBUG, false),
   };
