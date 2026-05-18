@@ -12,6 +12,7 @@ export interface AppConfig {
   codexRootArgs: string[];
   codexExecArgs: string[];
   codexResumeArgs: string[];
+  botAgent: string;
   pairingRequired: boolean;
   botType: string;
   baseUrl: string;
@@ -41,6 +42,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, cwd = process.c
     codexRootArgs: splitShellArgs(env.WECHAT_CODEX_ROOT_ARGS),
     codexExecArgs: splitShellArgs(env.WECHAT_CODEX_EXEC_ARGS || "--json --skip-git-repo-check"),
     codexResumeArgs: splitShellArgs(env.WECHAT_CODEX_RESUME_ARGS || "--json --skip-git-repo-check --all"),
+    botAgent: sanitizeBotAgent(env.WECHAT_CODEX_BOT_AGENT || "WechatCodexBridge/0.1.0"),
     pairingRequired: parseBoolean(env.WECHAT_CODEX_PAIRING_REQUIRED, true),
     botType: env.WECHAT_CODEX_BOT_TYPE?.trim() || "3",
     baseUrl: trimTrailingSlash(env.WECHAT_CODEX_BASE_URL || DEFAULT_BASE_URL),
@@ -74,4 +76,12 @@ function positiveInt(value: string | undefined, fallback: number): number {
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined || value.trim() === "") return fallback;
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+}
+
+function sanitizeBotAgent(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "WechatCodexBridge/0.1.0";
+  return Buffer.byteLength(trimmed, "utf8") <= 256 && /^[\x20-\x7e]+$/.test(trimmed)
+    ? trimmed
+    : "WechatCodexBridge/0.1.0";
 }
