@@ -9,6 +9,9 @@ test("loadConfig applies safe defaults", () => {
   assert.equal(config.pairingRequired, true);
   assert.equal(config.groupTrigger, "@codex");
   assert.equal(config.botAgent, "WechatCodexBridge/0.1.0");
+  assert.equal(config.downloadMedia, true);
+  assert.equal(config.typingEnabled, true);
+  assert.equal(config.mediaMaxBytes, 100 * 1024 * 1024);
   assert.deepEqual(config.codexExecArgs, ["--json", "--skip-git-repo-check"]);
 });
 
