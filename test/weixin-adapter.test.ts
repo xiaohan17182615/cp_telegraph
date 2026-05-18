@@ -17,12 +17,14 @@ test("normalizeMessage creates direct text route", () => {
     message_id: "m1",
     from_user_id: "friend",
     create_time_ms: 1000,
+    context_token: "ctx-1",
     message_type: MessageType.USER,
     item_list: [{ type: MessageItemType.TEXT, text_item: { text: "hello" } }],
   };
   const message = normalizeMessage(account, raw);
   assert.equal(message?.routeKey, "weixin:bot-a:direct:friend");
   assert.equal(message?.text, "hello");
+  assert.equal(message?.contextToken, "ctx-1");
 });
 
 test("normalizeMessage drops self and bot messages", () => {
