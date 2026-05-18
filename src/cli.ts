@@ -51,7 +51,7 @@ async function main(argv: string[]): Promise<void> {
 
 async function login(): Promise<void> {
   const config = loadConfig();
-  const client = new WeixinClient({ baseUrl: config.baseUrl });
+  const client = new WeixinClient({ baseUrl: config.baseUrl, botAgent: config.botAgent });
   const store = new WeixinAccountStore(config.accountsDir);
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
@@ -108,6 +108,7 @@ function status(): void {
     `state: ${config.stateDir}`,
     `cwd: ${config.cwd}`,
     `codex: ${config.codexBin}`,
+    `bot_agent: ${config.botAgent}`,
     `accounts: ${accountIds.length}`,
     `default_account: ${account?.accountId ?? "none"}`,
     `routes: ${state.routes.length}`,
@@ -216,6 +217,7 @@ function usage(): string {
     "Common environment variables:",
     "  WECHAT_CODEX_CWD=/path/to/workspace",
     "  WECHAT_CODEX_BIN=codex",
+    "  WECHAT_CODEX_BOT_AGENT=WechatCodexBridge/0.1.0",
     "  WECHAT_CODEX_PAIRING_REQUIRED=true",
     "  WECHAT_CODEX_GROUP_TRIGGER=@codex",
     "  WECHAT_CODEX_HOME=~/.wechat-codex-bridge",
