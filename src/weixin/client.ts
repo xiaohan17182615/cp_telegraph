@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
 import type {
+  GetConfigResponse,
   GetUpdatesResponse,
   QrStartResponse,
   QrStatusResponse,
   SendMessageResponse,
+  SendTypingResponse,
   WeixinSendMessageRequest,
 } from "./types.js";
 
@@ -59,17 +61,22 @@ export class WeixinClient {
   }
 
   async getUpdates(params: { token: string; syncCursor?: string; timeoutMs?: number }): Promise<GetUpdatesResponse> {
-    const response = await this.postJson<GetUpdatesResponse>({
-      endpoint: "ilink/bot/getupdates",
-      token: params.token,
-      timeoutMs: params.timeoutMs,
-      body: {
-        get_updates_buf: params.syncCursor ?? "",
-        base_info: this.baseInfo(),
-      },
-    });
-    assertSuccess(response, "getupdates");
-    return response;
+    try {
+      const response = await this.postJson<GetUpdatesResponse>({
+        endpoint: "ilink/bot/getupdates",
+        token: params.token,
+        timeoutMs: params.timeoutMs,
+        body: {
+          get_updates_buf: params.syncCursor ?? "",
+          base_info: this.baseInfo(),
+        },
+      });
+      assertSuccess(response, "getupdates");
+      return response;
+    } catch (error) {
+      if (isAbortError(error)) return { ret: 0, msgs: [], get_updates_buf: params.syncCursor ?? "" };
+      throw error;
+    }
   }
 
   async sendMessage(params: { token: string; body: WeixinSendMessageRequest; timeoutMs?: number }): Promise<SendMessageResponse> {
@@ -83,6 +90,48 @@ export class WeixinClient {
       },
     });
     assertSuccess(response, "sendmessage");
+    return response;
+  }
+
+  async getConfig(params: {
+    token: string;
+    ilinkUserId: string;
+    contextToken?: string;
+    timeoutMs?: number;
+  }): Promise<GetConfigResponse> {
+    const response = await this.postJson<GetConfigResponse>({
+      endpoint: "ilink/bot/getconfig",
+      token: params.token,
+      timeoutMs: params.timeoutMs,
+      body: {
+        ilink_user_id: params.ilinkUserId,
+        context_token: params.contextToken,
+        base_info: this.baseInfo(),
+      },
+    });
+    assertSuccess(response, "getconfig");
+    return response;
+  }
+
+  async sendTyping(params: {
+    token: string;
+    ilinkUserId: string;
+    typingTicket: string;
+    status: number;
+    timeoutMs?: number;
+  }): Promise<SendTypingResponse> {
+    const response = await this.postJson<SendTypingResponse>({
+      endpoint: "ilink/bot/sendtyping",
+      token: params.token,
+      timeoutMs: params.timeoutMs,
+      body: {
+        ilink_user_id: params.ilinkUserId,
+        typing_ticket: params.typingTicket,
+        status: params.status,
+        base_info: this.baseInfo(),
+      },
+    });
+    assertSuccess(response, "sendtyping");
     return response;
   }
 
@@ -177,6 +226,10 @@ function assertSuccess(response: ApiResponse | undefined, label: string): void {
   if (ret !== 0 || errcode !== 0) {
     throw new Error(`${label} failed: ret=${ret} errcode=${errcode} ${response?.errmsg ?? ""}`.trim());
   }
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 function clientVersion(version: string): number {
