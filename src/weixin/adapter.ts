@@ -2,13 +2,17 @@ import type { AppConfig } from "../config.js";
 import { splitForWeChat } from "../util/text.js";
 import { WeixinAccountStore, type StoredWeixinAccount } from "./account-store.js";
 import { WeixinClient } from "./client.js";
-import { MessageItemType, MessageState, MessageType, type WeixinMessage, type WeixinSendMessageRequest } from "./types.js";
+import { downloadMessageItemMedia } from "./media.js";
+import { MessageItemType, MessageState, MessageType, TypingStatus, type WeixinMessage, type WeixinMessageItem, type WeixinSendMessageRequest } from "./types.js";
 
 export interface InboundAttachment {
   id: string;
   kind: "image" | "voice" | "file" | "video";
   name?: string;
   sizeBytes?: number;
+  localPath?: string;
+  mimeType?: string;
+  downloadError?: string;
   raw: unknown;
 }
 
@@ -33,6 +37,7 @@ export class WeixinAdapter {
   private lastSentAt = 0;
   private account?: StoredWeixinAccount;
   private client?: WeixinClient;
+  private readonly typingTicketCache = new Map<string, string>();
 
   constructor(private readonly config: AppConfig) {
     this.store = new WeixinAccountStore(config.accountsDir);
@@ -74,6 +79,7 @@ export class WeixinAdapter {
         for (const raw of response.msgs ?? []) {
           const normalized = normalizeMessage(account, raw);
           if (!normalized) continue;
+          if (this.config.downloadMedia) await this.downloadAttachments(normalized);
           await onMessage(normalized);
         }
       } catch (error) {
@@ -103,6 +109,33 @@ export class WeixinAdapter {
     }
   }
 
+  async sendTyping(ilinkUserId: string, contextToken: string | undefined, status: number = TypingStatus.TYPING): Promise<void> {
+    if (!this.config.typingEnabled) return;
+    const account = this.account ?? this.store.getDefaultAccount();
+    if (!account) return;
+    const client = this.client ?? new WeixinClient({ baseUrl: account.baseUrl || this.config.baseUrl, botAgent: this.config.botAgent });
+    const cacheKey = `${account.accountId}:${ilinkUserId}:${contextToken ?? ""}`;
+    let typingTicket = this.typingTicketCache.get(cacheKey);
+    if (!typingTicket) {
+      const config = await client.getConfig({
+        token: account.token,
+        ilinkUserId,
+        contextToken,
+        timeoutMs: 10_000,
+      });
+      typingTicket = config.typing_ticket;
+      if (!typingTicket) return;
+      this.typingTicketCache.set(cacheKey, typingTicket);
+    }
+    await client.sendTyping({
+      token: account.token,
+      ilinkUserId,
+      typingTicket,
+      status,
+      timeoutMs: 10_000,
+    });
+  }
+
   private async enqueue(task: () => Promise<void>): Promise<void> {
     const previous = this.outboundQueue;
     let release!: () => void;
@@ -117,6 +150,25 @@ export class WeixinAdapter {
       this.lastSentAt = Date.now();
     } finally {
       release();
+    }
+  }
+
+  private async downloadAttachments(message: InboundMessage): Promise<void> {
+    for (const attachment of message.attachments) {
+      try {
+        const downloaded = await downloadMessageItemMedia(attachment.raw as WeixinMessageItem, {
+          cdnBaseUrl: this.config.cdnBaseUrl,
+          uploadsDir: this.config.uploadsDir,
+          maxBytes: this.config.mediaMaxBytes,
+          messageId: message.messageId,
+        });
+        if (!downloaded) continue;
+        attachment.localPath = downloaded.path;
+        attachment.mimeType = downloaded.mimeType;
+        attachment.sizeBytes = downloaded.sizeBytes;
+      } catch (error) {
+        attachment.downloadError = error instanceof Error ? error.message : String(error);
+      }
     }
   }
 }
@@ -173,13 +225,13 @@ function extractAttachments(raw: WeixinMessage): InboundAttachment[] {
   for (const [index, item] of (raw.item_list ?? []).entries()) {
     const id = String(item.msg_id ?? `${raw.message_id ?? "msg"}-${index}`);
     if (item.type === MessageItemType.IMAGE && item.image_item) {
-      out.push({ id, kind: "image", sizeBytes: item.image_item.hd_size ?? item.image_item.mid_size ?? item.image_item.thumb_size, raw: item.image_item });
+      out.push({ id, kind: "image", sizeBytes: item.image_item.hd_size ?? item.image_item.mid_size ?? item.image_item.thumb_size, raw: item });
     } else if (item.type === MessageItemType.VOICE && item.voice_item) {
-      out.push({ id, kind: "voice", raw: item.voice_item });
+      out.push({ id, kind: "voice", raw: item });
     } else if (item.type === MessageItemType.FILE && item.file_item) {
-      out.push({ id, kind: "file", name: item.file_item.file_name, sizeBytes: Number.parseInt(item.file_item.len ?? "", 10) || undefined, raw: item.file_item });
+      out.push({ id, kind: "file", name: item.file_item.file_name, sizeBytes: Number.parseInt(item.file_item.len ?? "", 10) || undefined, raw: item });
     } else if (item.type === MessageItemType.VIDEO && item.video_item) {
-      out.push({ id, kind: "video", sizeBytes: item.video_item.video_size, raw: item.video_item });
+      out.push({ id, kind: "video", sizeBytes: item.video_item.video_size, raw: item });
     }
   }
   return out;
