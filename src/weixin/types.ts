@@ -15,6 +15,11 @@ export const MessageState = {
   FINISH: 2,
 } as const;
 
+export const TypingStatus = {
+  TYPING: 1,
+  CANCEL: 2,
+} as const;
+
 export interface CdnMedia {
   encrypt_query_param?: string;
   aes_key?: string;
@@ -85,4 +90,17 @@ export interface SendMessageResponse {
 
 export interface WeixinSendMessageRequest {
   msg: WeixinMessage;
+}
+
+export interface GetConfigResponse {
+  ret?: number;
+  errcode?: number;
+  errmsg?: string;
+  typing_ticket?: string;
+}
+
+export interface SendTypingResponse {
+  ret?: number;
+  errcode?: number;
+  errmsg?: string;
 }
