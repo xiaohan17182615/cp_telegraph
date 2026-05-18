@@ -85,9 +85,13 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
 }
 
 function sanitizeBotAgent(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "WechatCodexBridge/0.1.0";
-  return Buffer.byteLength(trimmed, "utf8") <= 256 && /^[\x20-\x7e]+$/.test(trimmed)
-    ? trimmed
-    : "WechatCodexBridge/0.1.0";
+  const fallback = "WechatCodexBridge/0.1.0";
+  const matches = value.match(/[A-Za-z][A-Za-z0-9._+-]*\/[A-Za-z0-9][A-Za-z0-9._+-]*(?: \([ !#-'*-[\]-~]{0,128}\))?/g) ?? [];
+  const parts: string[] = [];
+  for (const match of matches) {
+    const next = [...parts, match].join(" ");
+    if (Buffer.byteLength(next, "utf8") > 256) break;
+    parts.push(match);
+  }
+  return parts.join(" ") || fallback;
 }
