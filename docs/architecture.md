@@ -11,7 +11,7 @@ State is intentionally boring:
 
 - accounts: `WECHAT_CODEX_HOME/state/weixin/accounts/*.json`
 - routes: `WECHAT_CODEX_HOME/state/bridge-state.json`
-- per-route fields: route key, trusted flag, Codex thread id, cwd, last prompt, timestamps
+- per-route fields: route key, trusted flag, Codex thread id, cwd, last prompt, latest WeChat context token, timestamps
 
 The route key format is:
 
@@ -37,5 +37,5 @@ flowchart LR
 
 - Pairing is required by default because a WeChat chat can trigger local Codex work.
 - Group prompts require `WECHAT_CODEX_GROUP_TRIGGER` by default; commands still use `/...`.
-- Outbound messages do not include WeChat `context_token` by default. This keeps replies explicit and avoids depending on fragile client-side context behavior.
+- The latest inbound WeChat `context_token` is cached per route and echoed in outbound replies, matching Tencent's plugin protocol contract.
 - Attachments are surfaced to Codex as metadata only in this first release. The project keeps media downloading separate so credentials and CDN handling can be audited before enabling file ingestion.
