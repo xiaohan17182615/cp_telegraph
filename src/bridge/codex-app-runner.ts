@@ -221,11 +221,6 @@ export class CodexAppRunner {
       const delta = stringField(params, "delta");
       if (delta) active.textParts.push(delta);
     }
-    if (active && method === "rawResponseItem/completed") {
-      const item = objectField(params, "item");
-      const text = textFromRawResponseItem(item);
-      if (text) active.textParts.push(text);
-    }
     if (active && method === "item/completed") {
       const item = objectField(params, "item");
       const text = textFromThreadItem(item);
@@ -343,17 +338,6 @@ function booleanField(source: Record<string, unknown> | undefined, key: string):
 function textFromThreadItem(item: Record<string, unknown> | undefined): string | undefined {
   if (item?.type === "agentMessage") return stringField(item, "text");
   return undefined;
-}
-
-function textFromRawResponseItem(item: Record<string, unknown> | undefined): string | undefined {
-  if (item?.type !== "message") return undefined;
-  const content = item.content;
-  if (!Array.isArray(content)) return undefined;
-  return content.map((entry) => {
-    if (!entry || typeof entry !== "object") return "";
-    const value = entry as Record<string, unknown>;
-    return stringField(value, "text") || "";
-  }).filter(Boolean).join("\n").trim() || undefined;
 }
 
 function artifactsFromThreadItem(item: Record<string, unknown> | undefined): string[] {
