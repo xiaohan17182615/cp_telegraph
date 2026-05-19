@@ -33,27 +33,11 @@ interface PreparedMedia {
 export async function sendMediaFile(options: SendMediaFileOptions): Promise<void> {
   let prepared = await prepareMediaFileForUpload(options.filePath, options.uploadsDir);
   const uploadType = mediaTypeFromMime(prepared.mimeType);
-  let uploaded: UploadedFileInfo;
-  try {
-    uploaded = await uploadToWeChatCdn({
-      ...options,
-      filePath: prepared.filePath,
-      mediaType: uploadType,
-    });
-  } catch (error) {
-    if (!prepared.mimeType.startsWith("image/")) throw error;
-    const retry = await renderWechatSafeImage(prepared.filePath, options.uploadsDir, "jpeg");
-    try {
-      uploaded = await uploadToWeChatCdn({
-        ...options,
-        filePath: retry.filePath,
-        mediaType: mediaTypeFromMime(retry.mimeType),
-      });
-      prepared = retry;
-    } catch (retryError) {
-      throw new Error(`${error instanceof Error ? error.message : String(error)}; JPEG retry failed: ${retryError instanceof Error ? retryError.message : String(retryError)}`);
-    }
-  }
+  const uploaded = await uploadToWeChatCdn({
+    ...options,
+    filePath: prepared.filePath,
+    mediaType: uploadType,
+  });
   const mediaItem = buildMediaItem(prepared.filePath, prepared.mimeType, uploaded);
   const items: WeixinMessageItem[] = [
     ...(options.caption ? [{ type: MessageItemType.TEXT, text_item: { text: options.caption } }] : []),
@@ -72,27 +56,21 @@ export async function prepareMediaFileForUpload(filePath: string, uploadsDir: st
   const absolute = path.resolve(filePath);
   const mimeType = mimeFromFilename(absolute);
   if (mimeType === "image/svg+xml") {
-    return renderWechatSafeImage(absolute, uploadsDir, "png");
+    return renderWechatSafeImage(absolute, uploadsDir);
   }
   if (mimeType.startsWith("image/")) {
     const metadata = await sharp(absolute, { limitInputPixels: false }).metadata().catch(() => undefined);
-    if (metadata?.hasAlpha) return renderWechatSafeImage(absolute, uploadsDir, "png");
+    if (metadata?.hasAlpha) return renderWechatSafeImage(absolute, uploadsDir);
   }
   return { filePath: absolute, mimeType };
 }
 
-async function renderWechatSafeImage(filePath: string, uploadsDir: string, format: "png" | "jpeg"): Promise<PreparedMedia> {
+async function renderWechatSafeImage(filePath: string, uploadsDir: string): Promise<PreparedMedia> {
   const day = new Date().toISOString().slice(0, 10);
   const outputDir = path.join(uploadsDir, "outbound", day);
   await fs.mkdir(outputDir, { recursive: true });
-  const ext = format === "jpeg" ? ".jpg" : ".png";
-  const suffix = format === "jpeg" ? "-wechat" : "";
-  const outputPath = path.join(outputDir, `${path.basename(filePath, path.extname(filePath))}${suffix}${ext}`);
+  const outputPath = path.join(outputDir, `${path.basename(filePath, path.extname(filePath))}.png`);
   const image = sharp(filePath, { limitInputPixels: false }).rotate().flatten({ background: "#ffffff" }).toColorspace("srgb");
-  if (format === "jpeg") {
-    await image.jpeg({ quality: 92, progressive: false }).toFile(outputPath);
-    return { filePath: outputPath, mimeType: "image/jpeg" };
-  }
   await image.png().toFile(outputPath);
   return { filePath: outputPath, mimeType: "image/png" };
 }

@@ -26,3 +26,23 @@ test("prepareMediaFileForUpload renders SVG as opaque PNG", async () => {
   assert.equal(metadata.height, 320);
   assert.equal(metadata.hasAlpha, false);
 });
+
+test("prepareMediaFileForUpload keeps opaque PNG bytes unchanged", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wechat-codex-outbound-"));
+  const pngPath = path.join(tmp, "poster.png");
+  await sharp({
+    create: {
+      width: 32,
+      height: 24,
+      channels: 3,
+      background: "#336699",
+    },
+  }).png().toFile(pngPath);
+  const before = fs.readFileSync(pngPath);
+
+  const prepared = await prepareMediaFileForUpload(pngPath, path.join(tmp, "uploads"));
+
+  assert.equal(prepared.filePath, pngPath);
+  assert.equal(prepared.mimeType, "image/png");
+  assert.deepEqual(fs.readFileSync(prepared.filePath), before);
+});

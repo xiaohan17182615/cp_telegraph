@@ -247,16 +247,19 @@ export class WechatCodexBridge {
 
   private async replyWithArtifacts(message: InboundMessage, prompt: string, cwd: string, text: string, extraArtifacts: string[] = []): Promise<void> {
     const contextToken = message.contextToken ?? this.routeFor(message).contextToken;
-    const artifacts = [...extraArtifacts, ...extractArtifactPaths(text, cwd)];
-    let replyText = stripArtifactDirectives(text);
-    if (artifacts.length === 0 && isImageArtifactRequest(prompt)) {
+    const artifacts = uniqueArtifactPaths([...extraArtifacts, ...extractArtifactPaths(text, cwd)]);
+    const imageRequest = isImageArtifactRequest(prompt);
+    let replyText = normalizeWechatReply(stripArtifactDirectives(text));
+    if (artifacts.length > 0 && imageRequest) {
+      replyText = "已生成图片，下面发送。";
+    } else if (artifacts.length === 0 && imageRequest) {
       const poster = await createFallbackPoster(prompt, cwd);
       artifacts.push(poster.path);
       if (!replyText || isPlaceholderArtifactReply(replyText)) replyText = posterReadyText(prompt);
     } else if (!replyText && artifacts.length > 0) {
       replyText = "已生成文件，下面发送。";
     } else if (!replyText) {
-      replyText = text.trim();
+      replyText = normalizeWechatReply(text);
     }
     if (replyText) await this.weixin.sendText(message.conversationId, replyText, contextToken);
     for (const artifactPath of artifacts.slice(0, 3)) {
@@ -310,6 +313,33 @@ function buildCodexPrompt(userPrompt: string, attachmentNote: string, nativeImag
     userPrompt,
     attachmentNote,
   ].filter((part) => part !== "").join("\n");
+}
+
+function uniqueArtifactPaths(paths: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of paths) {
+    const normalized = path.resolve(item);
+    const key = process.platform === "win32" ? normalized.toLowerCase() : normalized;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function normalizeWechatReply(text: string): string {
+  return text
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line
+      .replace(/([\p{Script=Han}])\s+([\p{Script=Han}])/gu, "$1$2")
+      .replace(/([\p{Script=Han}])\s+([，。！？；：、）])/gu, "$1$2")
+      .replace(/([（])\s+([\p{Script=Han}])/gu, "$1$2")
+      .replace(/[ \t]{3,}/g, " "))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function formatCodexFailure(error: unknown): string {

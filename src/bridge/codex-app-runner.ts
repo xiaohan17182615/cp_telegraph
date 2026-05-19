@@ -217,10 +217,6 @@ export class CodexAppRunner {
   private handleNotification(message: Record<string, unknown>, active: ActiveTurn | undefined): void {
     const method = String(message.method);
     const params = objectField(message, "params");
-    if (active && method === "item/agentMessage/delta") {
-      const delta = stringField(params, "delta");
-      if (delta) active.textParts.push(delta);
-    }
     if (active && method === "item/completed") {
       const item = objectField(params, "item");
       const text = textFromThreadItem(item);
