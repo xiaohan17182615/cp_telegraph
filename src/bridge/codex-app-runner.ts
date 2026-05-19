@@ -17,6 +17,7 @@ interface ActiveTurn {
   textParts: string[];
   artifacts: string[];
   rawLines: string[];
+  retryableErrors: number;
   resolve: (result: CodexRunResult) => void;
   reject: (error: Error) => void;
   timer: NodeJS.Timeout;
@@ -70,6 +71,7 @@ export class CodexAppRunner {
         textParts: [],
         artifacts: [],
         rawLines: [],
+        retryableErrors: 0,
         resolve,
         reject,
         timer: setTimeout(() => {
@@ -232,9 +234,27 @@ export class CodexAppRunner {
     }
     if (active && method === "error") {
       const willRetry = booleanField(params, "willRetry");
+      const error = objectField(params, "error");
+      const messageText = stringField(error, "message")
+        || stringField(params, "message")
+        || "Codex app-server turn failed";
+      if (willRetry && isFatalCodexError(messageText)) {
+        this.rejectTurn(active, new Error(messageText));
+        this.restart();
+        return;
+      }
+      if (willRetry && isRetryableNetworkError(messageText)) {
+        active.retryableErrors += 1;
+        if (active.retryableErrors >= 3) {
+          this.rejectTurn(
+            active,
+            new Error(`Codex app-server network error after ${active.retryableErrors} retries: ${messageText}`),
+          );
+          this.restart();
+        }
+        return;
+      }
       if (!willRetry) {
-        const error = objectField(params, "error");
-        const messageText = stringField(error, "message") || "Codex app-server turn failed";
         this.rejectTurn(active, new Error(messageText));
       }
     }
@@ -360,4 +380,25 @@ function dedupe(values: string[]): string[] {
     if (!out.includes(value)) out.push(value);
   }
   return out;
+}
+
+function isFatalCodexError(message: string): boolean {
+  const value = message.toLowerCase();
+  return value.includes("401 unauthorized")
+    || value.includes("missing bearer")
+    || value.includes("not authenticated")
+    || value.includes("please login");
+}
+
+function isRetryableNetworkError(message: string): boolean {
+  const value = message.toLowerCase();
+  return value.includes("error sending request")
+    || value.includes("tls handshake")
+    || value.includes("connection reset")
+    || value.includes("connection refused")
+    || value.includes("connection timed out")
+    || value.includes("network is unreachable")
+    || value.includes("fetch failed")
+    || value.includes("etimedout")
+    || value.includes("econnreset");
 }

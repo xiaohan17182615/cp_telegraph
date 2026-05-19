@@ -147,7 +147,7 @@ export class WechatCodexBridge {
       this.upsertRoute(message.routeKey, { codexThreadId: result.threadId, cwd });
       await this.replyWithArtifacts(message, prompt, cwd, result.text, result.artifacts);
     } catch (error) {
-      await this.reply(message, `Codex failed: ${sanitizeError(error)}`);
+      await this.reply(message, formatCodexFailure(error));
     } finally {
       this.setTyping(message, TypingStatus.CANCEL);
     }
@@ -232,7 +232,7 @@ export class WechatCodexBridge {
           threadId,
         });
       } catch (error) {
-        if (this.config.debug) console.error(`[codex-app:${routeKey}] falling back to exec: ${sanitizeError(error)}`);
+        console.warn(`[codex-app:${routeKey}] falling back to exec: ${sanitizeError(error)}`);
       }
     }
     return this.codex.run(routeKey, {
@@ -310,4 +310,36 @@ function buildCodexPrompt(userPrompt: string, attachmentNote: string, nativeImag
     userPrompt,
     attachmentNote,
   ].filter((part) => part !== "").join("\n");
+}
+
+function formatCodexFailure(error: unknown): string {
+  const detail = sanitizeError(error);
+  if (isCodexAuthError(detail)) {
+    return `Codex 登录失败：服务器上的 Codex 登录态或 API 凭据不可用。\n\n细节：${detail}`;
+  }
+  if (isCodexConnectivityError(detail)) {
+    return `Codex 连接失败：服务器暂时连不上 Codex/OpenAI 后端。请稍后重试；如果持续出现，需要检查服务器 DNS 或 HTTPS 代理。\n\n细节：${detail}`;
+  }
+  return `Codex failed: ${detail}`;
+}
+
+function isCodexAuthError(message: string): boolean {
+  const value = message.toLowerCase();
+  return value.includes("401 unauthorized")
+    || value.includes("missing bearer")
+    || value.includes("not authenticated")
+    || value.includes("please login");
+}
+
+function isCodexConnectivityError(message: string): boolean {
+  const value = message.toLowerCase();
+  return value.includes("error sending request")
+    || value.includes("tls handshake")
+    || value.includes("connection reset")
+    || value.includes("connection refused")
+    || value.includes("connection timed out")
+    || value.includes("network is unreachable")
+    || value.includes("fetch failed")
+    || value.includes("etimedout")
+    || value.includes("econnreset");
 }
