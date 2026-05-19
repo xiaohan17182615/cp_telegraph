@@ -14,6 +14,16 @@ test("extractArtifactPaths finds existing artifact directives", () => {
   assert.equal(stripArtifactDirectives(text), "已生成");
 });
 
+test("extractArtifactPaths finds generated office documents", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wechat-codex-artifact-"));
+  const file = path.join(tmp, "math_answers_summary.docx");
+  fs.writeFileSync(file, "fake docx");
+  const text = `已整理完成\n文件：${file}`;
+
+  assert.deepEqual(extractArtifactPaths(text, tmp), [file]);
+  assert.equal(stripArtifactDirectives(text), "已整理完成");
+});
+
 test("artifact helpers detect image requests and placeholder replies", () => {
   assert.equal(isImageArtifactRequest("生成北戴河旅游海报"), true);
   assert.equal(isImageArtifactRequest("查一下天气"), false);

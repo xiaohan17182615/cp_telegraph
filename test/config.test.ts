@@ -13,6 +13,7 @@ test("loadConfig applies safe defaults", () => {
   assert.equal(config.typingEnabled, true);
   assert.equal(config.workingNotice, false);
   assert.equal(config.mediaMaxBytes, 100 * 1024 * 1024);
+  assert.equal(config.inboundMergeWindowMs, 3000);
   assert.equal(config.codexRunner, "exec");
   assert.equal(config.codexModel, "gpt-5.5");
   assert.equal(config.codexReasoningEffort, "xhigh");
@@ -43,6 +44,7 @@ test("loadConfig parses args and tilde paths", () => {
     WECHAT_CODEX_RUNNER: "native",
     WECHAT_CODEX_MODEL: "gpt-5.4",
     WECHAT_CODEX_REASONING_EFFORT: "high",
+    WECHAT_CODEX_INBOUND_MERGE_WINDOW_MS: "1200",
   } as NodeJS.ProcessEnv, process.cwd());
   assert.equal(config.homeDir, path.join(os.homedir(), "bridge"));
   assert.deepEqual(config.codexExecArgs, ["--json", "--cd", "C:\\Work Dir"]);
@@ -50,6 +52,7 @@ test("loadConfig parses args and tilde paths", () => {
   assert.equal(config.codexRunner, "app-server");
   assert.equal(config.codexModel, "gpt-5.4");
   assert.equal(config.codexReasoningEffort, "high");
+  assert.equal(config.inboundMergeWindowMs, 1200);
 });
 
 test("loadConfig sanitizes bot agent as official UA tokens", () => {

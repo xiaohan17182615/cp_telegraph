@@ -11,11 +11,17 @@ import { PairingManager, parsePairCommand } from "./pairing.js";
 import { createFallbackPoster, posterReadyText } from "./poster.js";
 import { extractArtifactPaths, isImageArtifactRequest, isPlaceholderArtifactReply, stripArtifactDirectives } from "./artifacts.js";
 
+interface PendingInboundMerge {
+  message: InboundMessage;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 export class WechatCodexBridge {
   private readonly state: JsonStateStore;
   private readonly pairing = new PairingManager();
   private readonly codex: CodexRunner;
   private readonly nativeCodex: CodexAppRunner;
+  private readonly pendingInboundMerges = new Map<string, PendingInboundMerge>();
 
   constructor(
     private readonly config: AppConfig,
@@ -31,11 +37,39 @@ export class WechatCodexBridge {
   }
 
   stop(): void {
+    for (const pending of this.pendingInboundMerges.values()) clearTimeout(pending.timer);
+    this.pendingInboundMerges.clear();
     for (const route of this.state.listRoutes()) this.nativeCodex.stop(route.routeKey);
     this.weixin.stop();
   }
 
   private async handleMessage(message: InboundMessage): Promise<void> {
+    if (isImmediateMessage(message)) {
+      this.cancelPendingInboundMerge(message.routeKey);
+      await this.processMessage(message);
+      return;
+    }
+
+    const pending = this.pendingInboundMerges.get(message.routeKey);
+    if (pending) {
+      pending.message = mergeInboundMessages(pending.message, message);
+      if (shouldDelayInboundMessage(pending.message, this.config.inboundMergeWindowMs)) {
+        this.reschedulePendingInboundMerge(message.routeKey, pending);
+        return;
+      }
+      await this.flushPendingInboundMerge(message.routeKey);
+      return;
+    }
+
+    if (shouldDelayInboundMessage(message, this.config.inboundMergeWindowMs)) {
+      this.schedulePendingInboundMerge(message);
+      return;
+    }
+
+    await this.processMessage(message);
+  }
+
+  private async processMessage(message: InboundMessage): Promise<void> {
     const route = this.state.getRoute(message.routeKey);
     if (message.contextToken) this.upsertRoute(message.routeKey, { contextToken: message.contextToken });
     const pairCode = parsePairCommand(message.text);
@@ -59,6 +93,44 @@ export class WechatCodexBridge {
     const prompt = this.promptForCodex(message);
     if (prompt === null) return;
     await this.runCodex(message, prompt);
+  }
+
+  private schedulePendingInboundMerge(message: InboundMessage): void {
+    const pending: PendingInboundMerge = {
+      message,
+      timer: this.createInboundMergeTimer(message.routeKey),
+    };
+    this.pendingInboundMerges.set(message.routeKey, pending);
+  }
+
+  private reschedulePendingInboundMerge(routeKey: string, pending: PendingInboundMerge): void {
+    clearTimeout(pending.timer);
+    pending.timer = this.createInboundMergeTimer(routeKey);
+  }
+
+  private createInboundMergeTimer(routeKey: string): ReturnType<typeof setTimeout> {
+    const timer = setTimeout(() => {
+      void this.flushPendingInboundMerge(routeKey).catch((error) => {
+        console.error(`[bridge:${routeKey}] pending inbound flush failed: ${sanitizeError(error)}`);
+      });
+    }, this.config.inboundMergeWindowMs);
+    timer.unref?.();
+    return timer;
+  }
+
+  private cancelPendingInboundMerge(routeKey: string): void {
+    const pending = this.pendingInboundMerges.get(routeKey);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.pendingInboundMerges.delete(routeKey);
+  }
+
+  private async flushPendingInboundMerge(routeKey: string): Promise<void> {
+    const pending = this.pendingInboundMerges.get(routeKey);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.pendingInboundMerges.delete(routeKey);
+    await this.processMessage(pending.message);
   }
 
   private async handlePair(message: InboundMessage, code: string): Promise<void> {
@@ -167,6 +239,7 @@ export class WechatCodexBridge {
       `codex_thread: ${route.codexThreadId ?? "new"}`,
       `context_token: ${route.contextToken ? "cached" : "none"}`,
       `working_notice: ${this.config.workingNotice ? "on" : "off"}`,
+      `inbound_merge_window_ms: ${this.config.inboundMergeWindowMs}`,
     ].join("\n");
   }
 
@@ -282,6 +355,38 @@ export class WechatCodexBridge {
       if (this.config.debug) console.error(`[weixin:typing] ${sanitizeError(error)}`);
     });
   }
+}
+
+function isImmediateMessage(message: InboundMessage): boolean {
+  return Boolean(parsePairCommand(message.text) || parseCommand(message.text));
+}
+
+function shouldDelayInboundMessage(message: InboundMessage, mergeWindowMs: number): boolean {
+  return mergeWindowMs > 0 && message.attachments.length > 0 && message.text.trim() === "";
+}
+
+function mergeInboundMessages(base: InboundMessage, next: InboundMessage): InboundMessage {
+  return {
+    ...next,
+    routeKey: base.routeKey,
+    accountId: base.accountId,
+    conversationId: base.conversationId,
+    conversationKind: base.conversationKind,
+    senderId: next.senderId || base.senderId,
+    messageId: [base.messageId, next.messageId].filter(Boolean).join("+"),
+    text: mergeText(base.text, next.text),
+    attachments: [...base.attachments, ...next.attachments],
+    contextToken: next.contextToken ?? base.contextToken,
+    timestamp: next.timestamp || base.timestamp,
+  };
+}
+
+function mergeText(base: string, next: string): string {
+  const left = base.trim();
+  const right = next.trim();
+  if (!left) return right;
+  if (!right) return left;
+  return `${left}\n\n${right}`;
 }
 
 function formatAttachmentForPrompt(item: InboundMessage["attachments"][number]): string {

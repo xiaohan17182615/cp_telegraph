@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { downloadMessageItemMedia } from "../src/weixin/media.js";
+import { downloadMessageItemMedia, mimeFromFilename } from "../src/weixin/media.js";
 import { MessageItemType } from "../src/weixin/types.js";
 
 test("downloadMessageItemMedia decrypts and saves image media", async () => {
@@ -30,4 +30,15 @@ test("downloadMessageItemMedia decrypts and saves image media", async () => {
   assert.ok(saved?.path);
   assert.deepEqual(fs.readFileSync(saved.path), plaintext);
   assert.equal(saved.mimeType, "image/jpeg");
+});
+
+test("mimeFromFilename recognizes office documents", () => {
+  assert.equal(
+    mimeFromFilename("math_answers_summary.docx"),
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  );
+  assert.equal(
+    mimeFromFilename("report.xlsx"),
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
 });

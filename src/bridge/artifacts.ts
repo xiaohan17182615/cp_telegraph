@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const ARTIFACT_EXTENSIONS = /\.(?:png|jpe?g|webp|gif|svg|pdf|html?)$/i;
-const ARTIFACT_WORDS = /(artifact|output|file|path|image|poster|海报|图片|图像|文件|产物)\s*[:：]/i;
+const ARTIFACT_EXTENSION_SOURCE = "png|jpe?g|webp|gif|svg|pdf|html?|docx?|xlsx?|pptx?|rtf";
+const ARTIFACT_EXTENSIONS = new RegExp(`\\.(?:${ARTIFACT_EXTENSION_SOURCE})$`, "i");
+const ARTIFACT_WORDS = /(artifact|output|file|path|image|poster|海报|图片|图像|文件|文档|表格|演示|附件|产物)\s*[:：]/i;
 
 export function extractArtifactPaths(text: string, cwd: string): string[] {
   const out = new Set<string>();
@@ -40,13 +41,13 @@ function extractPathLikes(text: string): string[] {
   const markdown = /\[[^\]]+\]\(([^)]+)\)/g;
   for (const match of text.matchAll(markdown)) out.push(match[1] ?? "");
 
-  const quoted = /[`'"]([^`'"]+\.(?:png|jpe?g|webp|gif|svg|pdf|html?))[`'"]/gi;
+  const quoted = new RegExp("[`'\"]([^`'\"]+\\.(?:" + ARTIFACT_EXTENSION_SOURCE + "))[`'\"]", "gi");
   for (const match of text.matchAll(quoted)) out.push(match[1] ?? "");
 
-  const absolute = /((?:[A-Za-z]:\\|\/)[^\s)]+?\.(?:png|jpe?g|webp|gif|svg|pdf|html?))/gi;
+  const absolute = new RegExp(`((?:[A-Za-z]:\\\\|/)[^\\s)]+?\\.(?:${ARTIFACT_EXTENSION_SOURCE}))`, "gi");
   for (const match of text.matchAll(absolute)) out.push(match[1] ?? "");
 
-  const relative = /((?:\.{1,2}[\\/]|wechat-codex-artifacts[\\/])?[^\s)]+?\.(?:png|jpe?g|webp|gif|svg|pdf|html?))/gi;
+  const relative = new RegExp(`((?:\\.{1,2}[\\\\/]|wechat-codex-artifacts[\\\\/])?[^\\s)]+?\\.(?:${ARTIFACT_EXTENSION_SOURCE}))`, "gi");
   for (const match of text.matchAll(relative)) out.push(match[1] ?? "");
   return out;
 }
