@@ -10,7 +10,8 @@
 - 群聊默认只响应 `@codex` 开头的普通任务，避免群内所有消息都触发本地 Codex。
 - 运行任务时会按官方 `getconfig/sendtyping` 流程发送 typing 状态。
 - 默认下载并解密入站图片、文件、视频和语音为本地文件路径，再交给 Codex。
-- 支持把 Codex 生成的本地图片/文件 artifact 通过 iLink CDN 上传后发回微信；SVG 海报会自动转成 PNG。
+- 支持 `codex exec` 和实验性 `codex app-server` 两种运行面；app-server 模式可使用 Codex 的系统 skill，例如 `imagegen`。
+- 支持把 Codex 生成的本地图片/文件 artifact 通过 iLink CDN 上传后发回微信；SVG/透明图片会自动转成微信更稳的白底图片。
 - 支持 `/new`、`/cwd`、`/retry`、`/stop`、`/status`、`/routes` 等微信内命令。
 - 微信消息发送带拆分、排队、限速和重试，降低触发风控的概率。
 - 本地状态文件使用单独目录保存，账号 token 和路由状态默认不进入仓库。
@@ -68,6 +69,9 @@ WECHAT_CODEX_MEDIA_MAX_BYTES=104857600
 WECHAT_CODEX_TYPING_ENABLED=true
 WECHAT_CODEX_WORKING_NOTICE=false
 WECHAT_CODEX_HOME=~/.wechat-codex-bridge
+WECHAT_CODEX_RUNNER=exec
+WECHAT_CODEX_MODEL=gpt-5.5
+WECHAT_CODEX_REASONING_EFFORT=xhigh
 ```
 
 Codex 参数可以按需调整：
@@ -76,6 +80,14 @@ Codex 参数可以按需调整：
 WECHAT_CODEX_EXEC_ARGS='--json -m gpt-5.5 -c model_reasoning_effort="xhigh" --skip-git-repo-check'
 WECHAT_CODEX_RESUME_ARGS='--json -m gpt-5.5 -c model_reasoning_effort="xhigh" --skip-git-repo-check --all'
 ```
+
+如果希望更接近 Codex App/CodexBridge 的能力面，可以启用 app-server：
+
+```bash
+WECHAT_CODEX_RUNNER=app-server
+```
+
+app-server 模式会通过 `codex app-server` 调用已登录 Codex runtime，并优先接收 `imageGeneration.savedPath` 这类原生图片产物。该模式依赖当前机器的 Codex CLI、登录态和网络环境；失败时桥接会回退到 `codex exec` 路线。
 
 ## 服务化运行
 
@@ -99,7 +111,7 @@ powershell -ExecutionPolicy Bypass -File scripts/service/install-windows-task.ps
 
 ## 安全边界
 
-这个项目会把微信消息转交给本地 Codex CLI，本质上等同于允许已配对微信聊天远程触发本机命令行智能体。建议只在自己的机器和可信微信聊天中使用，保持默认配对开启，不要把账号 token、`.env`、状态目录或 Codex 凭据提交到仓库。
+这个项目会把微信消息转交给本地 Codex CLI 或 Codex app-server，本质上等同于允许已配对微信聊天远程触发本机智能体。建议只在自己的机器和可信微信聊天中使用，保持默认配对开启，不要把账号 token、`.env`、状态目录或 Codex 凭据提交到仓库。
 
 微信 iLink 是腾讯 `@tencent-weixin/openclaw-weixin` 官方插件正在使用的 Bot 通信通道，整体比旧式逆向微信协议更正规、更稳定。本项目是对 iLink HTTP 协议的独立轻量实现，不直接依赖官方插件，因此会跟随官方插件和后端协议变化进行兼容更新；群聊能力也以官方实际返回和能力声明为准。
 

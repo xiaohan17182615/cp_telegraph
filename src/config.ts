@@ -12,6 +12,10 @@ export interface AppConfig {
   codexRootArgs: string[];
   codexExecArgs: string[];
   codexResumeArgs: string[];
+  codexRunner: "exec" | "app-server" | "auto";
+  codexModel: string;
+  codexReasoningEffort: string;
+  codexAppServerTimeoutMs: number;
   botAgent: string;
   pairingRequired: boolean;
   botType: string;
@@ -48,6 +52,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, cwd = process.c
     codexRootArgs: splitShellArgs(env.WECHAT_CODEX_ROOT_ARGS),
     codexExecArgs: splitShellArgs(env.WECHAT_CODEX_EXEC_ARGS || DEFAULT_CODEX_EXEC_ARGS),
     codexResumeArgs: splitShellArgs(env.WECHAT_CODEX_RESUME_ARGS || DEFAULT_CODEX_RESUME_ARGS),
+    codexRunner: parseRunner(env.WECHAT_CODEX_RUNNER),
+    codexModel: env.WECHAT_CODEX_MODEL?.trim() || "gpt-5.5",
+    codexReasoningEffort: env.WECHAT_CODEX_REASONING_EFFORT?.trim() || "xhigh",
+    codexAppServerTimeoutMs: positiveInt(env.WECHAT_CODEX_APP_SERVER_TIMEOUT_MS, 15 * 60 * 1000),
     botAgent: sanitizeBotAgent(env.WECHAT_CODEX_BOT_AGENT || "WechatCodexBridge/0.1.0"),
     pairingRequired: parseBoolean(env.WECHAT_CODEX_PAIRING_REQUIRED, true),
     botType: env.WECHAT_CODEX_BOT_TYPE?.trim() || "3",
@@ -86,6 +94,13 @@ function positiveInt(value: string | undefined, fallback: number): number {
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined || value.trim() === "") return fallback;
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+}
+
+function parseRunner(value: string | undefined): AppConfig["codexRunner"] {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "app-server" || normalized === "app_server" || normalized === "native") return "app-server";
+  if (normalized === "auto") return "auto";
+  return "exec";
 }
 
 function sanitizeBotAgent(value: string): string {

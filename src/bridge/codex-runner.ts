@@ -14,6 +14,7 @@ export interface CodexRunResult {
   text: string;
   threadId?: string;
   rawLines: string[];
+  artifacts?: string[];
 }
 
 export class CodexRunner {

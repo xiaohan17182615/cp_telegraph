@@ -6,6 +6,7 @@ import { WeixinAdapter, type InboundMessage } from "../weixin/adapter.js";
 import { TypingStatus } from "../weixin/types.js";
 import { parseCommand, helpText } from "./commands.js";
 import { CodexRunner } from "./codex-runner.js";
+import { CodexAppRunner } from "./codex-app-runner.js";
 import { PairingManager, parsePairCommand } from "./pairing.js";
 import { createFallbackPoster, posterReadyText } from "./poster.js";
 import { extractArtifactPaths, isImageArtifactRequest, isPlaceholderArtifactReply, stripArtifactDirectives } from "./artifacts.js";
@@ -14,6 +15,7 @@ export class WechatCodexBridge {
   private readonly state: JsonStateStore;
   private readonly pairing = new PairingManager();
   private readonly codex: CodexRunner;
+  private readonly nativeCodex: CodexAppRunner;
 
   constructor(
     private readonly config: AppConfig,
@@ -21,6 +23,7 @@ export class WechatCodexBridge {
   ) {
     this.state = new JsonStateStore(path.join(config.stateDir, "bridge-state.json"));
     this.codex = new CodexRunner(config);
+    this.nativeCodex = new CodexAppRunner(config);
   }
 
   async start(): Promise<void> {
@@ -28,6 +31,7 @@ export class WechatCodexBridge {
   }
 
   stop(): void {
+    for (const route of this.state.listRoutes()) this.nativeCodex.stop(route.routeKey);
     this.weixin.stop();
   }
 
@@ -118,7 +122,7 @@ export class WechatCodexBridge {
       return;
     }
     if (name === "stop") {
-      const stopped = this.codex.stop(message.routeKey);
+      const stopped = this.codex.stop(message.routeKey) || this.nativeCodex.stop(message.routeKey);
       await this.reply(message, stopped ? "Stop signal sent to Codex." : "No running Codex task for this chat.");
       return;
     }
@@ -126,7 +130,7 @@ export class WechatCodexBridge {
   }
 
   private async runCodex(message: InboundMessage, prompt: string): Promise<void> {
-    if (this.codex.isBusy(message.routeKey)) {
+    if (this.codex.isBusy(message.routeKey) || this.nativeCodex.isBusy(message.routeKey)) {
       await this.reply(message, "Codex is still working on this chat. Send /stop to interrupt, or wait for the result.");
       return;
     }
@@ -139,16 +143,9 @@ export class WechatCodexBridge {
       const attachmentNote = message.attachments.length > 0
         ? `\n\nIncoming WeChat attachments:\n${message.attachments.map(formatAttachmentForPrompt).join("\n")}`
         : "";
-      const result = await this.codex.run(message.routeKey, {
-        prompt: buildCodexPrompt(prompt, attachmentNote),
-        cwd,
-        threadId: route.codexThreadId,
-        onProgress: (text) => {
-          if (this.config.debug) console.error(`[codex:${message.routeKey}] ${text}`);
-        },
-      });
+      const result = await this.runCodexBackend(message.routeKey, prompt, attachmentNote, cwd, route.codexThreadId);
       this.upsertRoute(message.routeKey, { codexThreadId: result.threadId, cwd });
-      await this.replyWithArtifacts(message, prompt, cwd, result.text);
+      await this.replyWithArtifacts(message, prompt, cwd, result.text, result.artifacts);
     } catch (error) {
       await this.reply(message, `Codex failed: ${sanitizeError(error)}`);
     } finally {
@@ -164,7 +161,8 @@ export class WechatCodexBridge {
       `wechat: ${wx.account ?? "not logged in"}`,
       `route: ${message.routeKey}`,
       `paired: ${route.trusted ? "yes" : "no"}`,
-      `busy: ${this.codex.isBusy(message.routeKey) ? "yes" : "no"}`,
+      `busy: ${this.codex.isBusy(message.routeKey) || this.nativeCodex.isBusy(message.routeKey) ? "yes" : "no"}`,
+      `runner: ${this.config.codexRunner}`,
       `cwd: ${route.cwd ?? this.config.cwd}`,
       `codex_thread: ${route.codexThreadId ?? "new"}`,
       `context_token: ${route.contextToken ? "cached" : "none"}`,
@@ -223,9 +221,33 @@ export class WechatCodexBridge {
     await this.weixin.sendText(message.conversationId, content, contextToken);
   }
 
-  private async replyWithArtifacts(message: InboundMessage, prompt: string, cwd: string, text: string): Promise<void> {
+  private async runCodexBackend(routeKey: string, prompt: string, attachmentNote: string, cwd: string, threadId?: string) {
+    const preferNative = this.config.codexRunner === "app-server"
+      || (this.config.codexRunner === "auto" && isImageArtifactRequest(prompt));
+    if (preferNative) {
+      try {
+        return await this.nativeCodex.run(routeKey, {
+          prompt: buildCodexPrompt(prompt, attachmentNote, true),
+          cwd,
+          threadId,
+        });
+      } catch (error) {
+        if (this.config.debug) console.error(`[codex-app:${routeKey}] falling back to exec: ${sanitizeError(error)}`);
+      }
+    }
+    return this.codex.run(routeKey, {
+      prompt: buildCodexPrompt(prompt, attachmentNote, false),
+      cwd,
+      threadId,
+      onProgress: (text) => {
+        if (this.config.debug) console.error(`[codex:${routeKey}] ${text}`);
+      },
+    });
+  }
+
+  private async replyWithArtifacts(message: InboundMessage, prompt: string, cwd: string, text: string, extraArtifacts: string[] = []): Promise<void> {
     const contextToken = message.contextToken ?? this.routeFor(message).contextToken;
-    const artifacts = extractArtifactPaths(text, cwd);
+    const artifacts = [...extraArtifacts, ...extractArtifactPaths(text, cwd)];
     let replyText = stripArtifactDirectives(text);
     if (artifacts.length === 0 && isImageArtifactRequest(prompt)) {
       const poster = await createFallbackPoster(prompt, cwd);
@@ -268,7 +290,10 @@ function formatAttachmentForPrompt(item: InboundMessage["attachments"][number]):
   return parts.join(" ");
 }
 
-function buildCodexPrompt(userPrompt: string, attachmentNote: string): string {
+function buildCodexPrompt(userPrompt: string, attachmentNote: string, nativeImageGeneration: boolean): string {
+  const imageInstruction = nativeImageGeneration
+    ? "- For poster/image requests, use the imagegen skill / native image generation when available. Save the generated raster image and return the saved file path."
+    : "- This Codex CLI environment cannot call ChatGPT imagegen. For poster/image requests, create a real local SVG/PNG artifact under ./wechat-codex-artifacts and finish with `ARTIFACT: <absolute path>`.";
   return [
     "WeChat reply style:",
     "- Reply in the user's language unless they ask otherwise.",
@@ -278,7 +303,7 @@ function buildCodexPrompt(userPrompt: string, attachmentNote: string): string {
     "- Avoid tables and long link lists. If sources are useful, add one short reference line with at most 2 links.",
     "- For real-time lookups, say the exact date/time of the result and the answer; keep caveats short.",
     "- For code/server work, summarize outcome, key changed paths, verification result, and any required user action.",
-    "- This Codex CLI environment cannot call ChatGPT imagegen. For poster/image requests, create a real local SVG/PNG artifact under ./wechat-codex-artifacts and finish with `ARTIFACT: <absolute path>`.",
+    imageInstruction,
     "- Never reply only with future-tense tool plans such as 'I will use imagegen'. Create the artifact or clearly say why it cannot be created.",
     "",
     "User message:",

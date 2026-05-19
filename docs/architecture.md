@@ -6,6 +6,7 @@ The bridge has four small layers:
 2. `WeixinAdapter` converts raw WeChat messages into stable inbound route objects, downloads inbound media, sends typing state, and serializes outbound text/media delivery.
 3. `WechatCodexBridge` handles pairing, group triggers, commands, per-chat route state, and Codex task dispatch.
 4. `CodexRunner` starts `codex exec` or `codex exec resume`, reads JSONL output, stores the thread id, and returns the final assistant text to WeChat.
+5. `CodexAppRunner` can instead start `codex app-server` over stdio, run turns through the native app-server protocol, and capture native artifact items such as `imageGeneration.savedPath`.
 
 State is intentionally boring:
 
@@ -28,7 +29,7 @@ flowchart LR
   WX["WeChat iLink"] --> Poll["WeixinAdapter long poll"]
   Poll --> Route["Route and normalize"]
   Route --> Pair["Pairing and command gate"]
-  Pair --> Codex["CodexRunner"]
+  Pair --> Codex["CodexRunner / CodexAppRunner"]
   Codex --> Split["Split and queue reply"]
   Split --> WX
 ```
@@ -40,3 +41,4 @@ flowchart LR
 - The latest inbound WeChat `context_token` is cached per route and echoed in outbound replies, matching Tencent's plugin protocol contract.
 - Inbound media is downloaded and AES-128-ECB decrypted when `WECHAT_CODEX_DOWNLOAD_MEDIA=true`; Codex receives local paths in the prompt metadata.
 - Outbound artifact delivery uses the full `getuploadurl -> AES-128-ECB encrypted CDN upload -> media item send` pipeline. SVG artifacts are rendered to PNG before image delivery.
+- `WECHAT_CODEX_RUNNER=exec` keeps the stable CLI path. `WECHAT_CODEX_RUNNER=app-server` uses the native Codex app-server path, which can expose system skills such as `imagegen`; `auto` uses app-server for image/artifact prompts and exec for normal prompts.
