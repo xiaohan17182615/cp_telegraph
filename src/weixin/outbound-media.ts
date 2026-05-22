@@ -30,9 +30,13 @@ interface PreparedMedia {
   mimeType: string;
 }
 
+const LARGE_IMAGE_FILE_FALLBACK_BYTES = 20 * 1024 * 1024;
+const CDN_UPLOAD_TIMEOUT_MS = 90_000;
+
 export async function sendMediaFile(options: SendMediaFileOptions): Promise<void> {
   const prepared = await prepareMediaFileForUpload(options.filePath, options.uploadsDir);
-  const uploadType = mediaTypeFromMime(prepared.mimeType);
+  const stat = await fs.stat(prepared.filePath);
+  const uploadType = mediaTypeForUpload(prepared.mimeType, stat.size);
   try {
     await sendPreparedMedia(options, prepared, uploadType);
     return;
@@ -128,6 +132,7 @@ async function uploadToWeChatCdn(params: SendMediaFileOptions & { mediaType: num
     method: "POST",
     headers: { "Content-Type": "application/octet-stream" },
     body: new Uint8Array(ciphertext),
+    signal: AbortSignal.timeout(CDN_UPLOAD_TIMEOUT_MS),
   });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
@@ -189,6 +194,11 @@ function buildSingleItemMessage(toUserId: string, item: WeixinMessageItem, conte
       item_list: [item],
     },
   };
+}
+
+export function mediaTypeForUpload(mimeType: string, sizeBytes = 0): number {
+  if (mimeType.startsWith("image/") && sizeBytes > LARGE_IMAGE_FILE_FALLBACK_BYTES) return UploadMediaType.FILE;
+  return mediaTypeFromMime(mimeType);
 }
 
 function mediaTypeFromMime(mimeType: string): number {

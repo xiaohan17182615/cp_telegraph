@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
-import { prepareMediaFileForUpload, sendMediaFile } from "../src/weixin/outbound-media.js";
+import { mediaTypeForUpload, prepareMediaFileForUpload, sendMediaFile } from "../src/weixin/outbound-media.js";
 import { MessageItemType, UploadMediaType } from "../src/weixin/types.js";
 
 test("prepareMediaFileForUpload renders SVG as opaque PNG", async () => {
@@ -122,4 +122,9 @@ test("sendMediaFile falls back to file item when image upload fails", async () =
   const sent = sentBodies[0] as { msg?: { item_list?: Array<{ type?: number; file_item?: { file_name?: string } }> } };
   assert.equal(sent.msg?.item_list?.[0]?.type, MessageItemType.FILE);
   assert.equal(sent.msg?.item_list?.[0]?.file_item?.file_name, "large.png");
+});
+
+test("mediaTypeForUpload sends very large images as files", () => {
+  assert.equal(mediaTypeForUpload("image/png", 19 * 1024 * 1024), UploadMediaType.IMAGE);
+  assert.equal(mediaTypeForUpload("image/png", 21 * 1024 * 1024), UploadMediaType.FILE);
 });
