@@ -139,10 +139,10 @@ export class WechatCodexBridge {
     const result = this.pairing.verify(message.routeKey, code);
     if (result.ok) {
       this.state.trustRoute(message.routeKey);
-      await this.reply(message, "Paired. This chat is now allowed to use Codex.");
+      await this.reply(message, "配对成功。这个微信聊天现在可以使用 Codex。");
       return;
     }
-    await this.reply(message, `Pairing failed: ${result.reason}. Check the terminal for the latest code.`);
+    await this.reply(message, `配对失败：${result.reason}。请查看运行 wechat-codex 的终端，使用最新配对码。`);
   }
 
   private async challenge(message: InboundMessage): Promise<void> {
@@ -154,7 +154,7 @@ export class WechatCodexBridge {
       `code: ${challenge.code}`,
       `expires: ${new Date(challenge.expiresAt).toISOString()}`,
     ].join("\n"));
-    await this.reply(message, "This WeChat chat is not paired yet. Check the terminal running wechat-codex, then send `/pair <code>` here.");
+    await this.reply(message, "这个微信聊天还没有配对。请查看运行 wechat-codex 的终端，然后在这里发送 `/pair <code>`。");
   }
 
   private async handleCommand(message: InboundMessage, name: string, args: string[]): Promise<void> {
@@ -173,23 +173,23 @@ export class WechatCodexBridge {
     if (name === "new") {
       const cwd = args.length > 0 ? path.resolve(args.join(" ")) : undefined;
       this.upsertRoute(message.routeKey, { codexThreadId: undefined, cwd });
-      await this.reply(message, `New Codex thread will be used for this chat.${cwd ? `\ncwd: ${cwd}` : ""}`);
+      await this.reply(message, `已为当前聊天开启新的 Codex 对话。${cwd ? `\n工作目录：${cwd}` : ""}`);
       return;
     }
     if (name === "cwd") {
       if (args.length === 0) {
-        await this.reply(message, `Current cwd: ${this.routeFor(message).cwd ?? this.config.cwd}`);
+        await this.reply(message, `当前工作目录：${this.routeFor(message).cwd ?? this.config.cwd}`);
         return;
       }
       const cwd = path.resolve(args.join(" "));
       this.upsertRoute(message.routeKey, { cwd });
-      await this.reply(message, `Working directory set:\n${cwd}`);
+      await this.reply(message, `已设置工作目录：\n${cwd}`);
       return;
     }
     if (name === "retry") {
       const lastPrompt = this.routeFor(message).lastPrompt;
       if (!lastPrompt) {
-        await this.reply(message, "No previous prompt for this chat.");
+        await this.reply(message, "当前聊天还没有可重试的上一条任务。");
         return;
       }
       await this.runCodex(message, lastPrompt);
@@ -197,21 +197,21 @@ export class WechatCodexBridge {
     }
     if (name === "stop") {
       const stopped = this.codex.stop(message.routeKey) || this.nativeCodex.stop(message.routeKey);
-      await this.reply(message, stopped ? "Stop signal sent to Codex." : "No running Codex task for this chat.");
+      await this.reply(message, stopped ? "已向 Codex 发送停止信号。" : "当前聊天没有正在运行的 Codex 任务。");
       return;
     }
-    await this.reply(message, `Unknown command: /${name}\nSend /help for available commands.`);
+    await this.reply(message, `未知命令：/${name}\n发送 /help 查看可用命令。`);
   }
 
   private async runCodex(message: InboundMessage, prompt: string): Promise<void> {
     if (this.codex.isBusy(message.routeKey) || this.nativeCodex.isBusy(message.routeKey)) {
-      await this.reply(message, "Codex is still working on this chat. Send /stop to interrupt, or wait for the result.");
+      await this.reply(message, "Codex 还在处理当前聊天的上一条任务。可以发送 /stop 中断，或稍等结果。");
       return;
     }
     const route = this.routeFor(message);
     const cwd = route.cwd ?? this.config.cwd;
     this.upsertRoute(message.routeKey, { lastPrompt: prompt, cwd });
-    if (this.config.workingNotice) await this.reply(message, "Codex is working...");
+    if (this.config.workingNotice) await this.reply(message, "Codex 正在处理...");
     this.setTyping(message, TypingStatus.TYPING);
     try {
       const attachmentNote = message.attachments.length > 0
@@ -231,27 +231,27 @@ export class WechatCodexBridge {
     const route = this.routeFor(message);
     const wx = this.weixin.status();
     return [
-      "Bridge status",
-      `wechat: ${wx.account ?? "not logged in"}`,
-      `route: ${message.routeKey}`,
-      `paired: ${route.trusted ? "yes" : "no"}`,
-      `busy: ${this.codex.isBusy(message.routeKey) || this.nativeCodex.isBusy(message.routeKey) ? "yes" : "no"}`,
-      `runner: ${this.config.codexRunner}`,
-      `cwd: ${route.cwd ?? this.config.cwd}`,
-      `codex_thread: ${route.codexThreadId ?? "new"}`,
-      `context_token: ${route.contextToken ? "cached" : "none"}`,
-      `working_notice: ${this.config.workingNotice ? "on" : "off"}`,
-      `inbound_merge_window_ms: ${this.config.inboundMergeWindowMs}`,
+      "桥接状态",
+      `微信账号：${wx.account ?? "未登录"}`,
+      `聊天路由：${message.routeKey}`,
+      `已配对：${route.trusted ? "是" : "否"}`,
+      `处理中：${this.codex.isBusy(message.routeKey) || this.nativeCodex.isBusy(message.routeKey) ? "是" : "否"}`,
+      `运行器：${this.config.codexRunner}`,
+      `工作目录：${route.cwd ?? this.config.cwd}`,
+      `Codex 对话：${route.codexThreadId ?? "新对话"}`,
+      `上下文 token：${route.contextToken ? "已缓存" : "无"}`,
+      `工作提示：${this.config.workingNotice ? "开" : "关"}`,
+      `入站合并窗口：${this.config.inboundMergeWindowMs}ms`,
     ].join("\n");
   }
 
   private routesText(): string {
     const routes = this.state.listRoutes().slice(0, 20);
-    if (routes.length === 0) return "No routes yet.";
+    if (routes.length === 0) return "还没有记录任何聊天路由。";
     return routes.map((route, index) => [
       `${index + 1}. ${route.routeKey}`,
-      `   paired=${route.trusted ? "yes" : "no"} thread=${route.codexThreadId ?? "new"}`,
-      `   updated=${route.updatedAt}`,
+      `   已配对=${route.trusted ? "是" : "否"} 对话=${route.codexThreadId ?? "新对话"}`,
+      `   更新时间=${route.updatedAt}`,
     ].join("\n")).join("\n");
   }
 
@@ -343,7 +343,7 @@ export class WechatCodexBridge {
       } catch (error) {
         await this.weixin.sendText(
           message.conversationId,
-          `Artifact generated but media send failed: ${sanitizeError(error)}\n${artifactPath}`,
+          `文件已生成，但发送到微信失败：${sanitizeError(error)}\n${artifactPath}`,
           contextToken,
         );
       }
@@ -402,19 +402,19 @@ function formatAttachmentForPrompt(item: InboundMessage["attachments"][number]):
 
 function buildCodexPrompt(userPrompt: string, attachmentNote: string, nativeImageGeneration: boolean): string {
   const imageInstruction = nativeImageGeneration
-    ? "- For poster/image requests, use the imagegen skill / native image generation when available. Save the generated raster image and return the saved file path."
-    : "- This Codex CLI environment cannot call ChatGPT imagegen. For poster/image requests, create a real local SVG/PNG artifact under ./wechat-codex-artifacts and finish with `ARTIFACT: <absolute path>`.";
+    ? "- 如果用户要生成或编辑图片/海报，优先使用 imagegen skill / 原生图片生成能力。保存栅格图片，并返回保存后的文件路径。"
+    : "- 当前 Codex CLI 环境不能直接调用 ChatGPT imagegen。图片/海报请求请在 ./wechat-codex-artifacts 下创建真实 SVG/PNG artifact，并以 `ARTIFACT: <absolute path>` 结束。";
   return [
-    "WeChat reply style:",
-    "- Reply in the user's language unless they ask otherwise.",
-    "- Put the direct answer first. Avoid long preambles, meta commentary, and internal implementation details.",
-    "- Default to a compact WeChat shape: conclusion first, then 2-5 short bullets or short paragraphs.",
-    "- Keep routine answers under about 800 Chinese characters or 500 English words unless the user asks for depth.",
-    "- Avoid tables and long link lists. If sources are useful, add one short reference line with at most 2 links.",
-    "- For real-time lookups, say the exact date/time of the result and the answer; keep caveats short.",
-    "- For code/server work, summarize outcome, key changed paths, verification result, and any required user action.",
+    "微信回复风格：",
+    "- 默认使用简体中文回复，尤其是用户只发图片/文件或语言不明确时；只有用户明确要求其他语言时才切换。",
+    "- 直接给答案，不要长铺垫、元解释或内部实现细节。",
+    "- 默认适合微信阅读：结论先行，然后 2-5 条短要点或短段落。",
+    "- 常规回答尽量控制在 800 个中文字符以内，除非用户明确要求深入。",
+    "- 避免表格和长链接列表；需要来源时，只放一行简短参考，最多 2 个链接。",
+    "- 实时查询要给出结果对应的具体日期/时间和答案，少说免责声明。",
+    "- 代码/服务器任务要概括结果、关键改动、验证结果，以及是否需要用户操作。",
     imageInstruction,
-    "- Never reply only with future-tense tool plans such as 'I will use imagegen'. Create the artifact or clearly say why it cannot be created.",
+    "- 不要只回复“我会用 imagegen”这类未来计划；要实际创建 artifact，或明确说明无法创建的原因。",
     "",
     "User message:",
     userPrompt,
@@ -473,7 +473,7 @@ function formatCodexFailure(error: unknown): string {
   if (isCodexConnectivityError(detail)) {
     return `Codex 连接失败：服务器暂时连不上 Codex/OpenAI 后端。请稍后重试；如果持续出现，需要检查服务器 DNS 或 HTTPS 代理。\n\n细节：${detail}`;
   }
-  return `Codex failed: ${detail}`;
+  return `Codex 运行失败：${detail}`;
 }
 
 function isCodexAuthError(message: string): boolean {

@@ -31,17 +31,18 @@ export function normalizeCommandName(name: string): string {
 
 export function helpText(): string {
   return [
-    "Wechat Codex Bridge",
+    "微信 Codex Bridge 命令",
     "",
-    "/help - show commands",
-    "/status - show bridge status for this chat",
-    "/new [cwd] - start a new Codex thread for this chat",
-    "/cwd <path> - set working directory for this chat",
-    "/retry - retry the last prompt in this chat",
-    "/stop - stop the running Codex task for this chat",
-    "/routes - list known chats",
-    "/pair <code> - trust this chat after reading the terminal code",
+    "/help - 显示命令",
+    "/status - 查看当前聊天状态",
+    "/new [cwd] - 为当前聊天开启新 Codex 对话，可选切换工作目录",
+    "/cwd <path> - 设置当前聊天的工作目录",
+    "/retry - 重试当前聊天上一条任务",
+    "/stop - 停止当前聊天正在运行的任务",
+    "/routes - 列出已记录的微信聊天",
+    "/pair <code> - 输入终端里的配对码，信任当前聊天",
     "",
-    "Send any normal message to run Codex.",
+    "别名：/st=/status，/n=/new，/cd=/cwd，/r=/retry，/s=/stop，/ls=/routes",
+    "直接发送普通消息即可运行 Codex。",
   ].join("\n");
 }

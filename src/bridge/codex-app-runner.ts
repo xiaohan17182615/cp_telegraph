@@ -42,7 +42,7 @@ export class CodexAppRunner {
   stop(routeKey: string): boolean {
     const active = this.activeByRoute.get(routeKey);
     if (!active) return false;
-    this.rejectTurn(active, new Error("Stop signal sent to Codex app-server."));
+    this.rejectTurn(active, new Error("已向 Codex app-server 发送停止信号。"));
     this.restart();
     return true;
   }
