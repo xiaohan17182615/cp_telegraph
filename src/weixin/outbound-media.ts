@@ -37,18 +37,34 @@ export async function sendMediaFile(options: SendMediaFileOptions): Promise<void
   const prepared = await prepareMediaFileForUpload(options.filePath, options.uploadsDir);
   const stat = await fs.stat(prepared.filePath);
   const uploadType = mediaTypeForUpload(prepared.mimeType, stat.size);
+  const errors: string[] = [];
   try {
     await sendPreparedMedia(options, prepared, uploadType);
     return;
   } catch (error) {
-    if (uploadType !== UploadMediaType.IMAGE) throw error;
-    try {
-      await sendPreparedMedia(options, prepared, UploadMediaType.FILE);
-      return;
-    } catch (fallbackError) {
-      throw new Error(`image upload failed (${errorMessage(error)}); file fallback failed (${errorMessage(fallbackError)})`);
+    errors.push(`${uploadTypeName(uploadType)} upload failed (${errorMessage(error)})`);
+    if (!prepared.mimeType.startsWith("image/")) throw error;
+    if (uploadType === UploadMediaType.IMAGE) {
+      try {
+        await sendPreparedMedia(options, prepared, UploadMediaType.FILE);
+        return;
+      } catch (fallbackError) {
+        errors.push(`file fallback failed (${errorMessage(fallbackError)})`);
+      }
     }
   }
+  const delivery = await createWechatDeliveryImage(prepared, options.uploadsDir);
+  if (delivery) {
+    const deliveryStat = await fs.stat(delivery.filePath);
+    const deliveryUploadType = mediaTypeForUpload(delivery.mimeType, deliveryStat.size);
+    try {
+      await sendPreparedMedia(options, delivery, deliveryUploadType);
+      return;
+    } catch (deliveryError) {
+      errors.push(`delivery image fallback failed (${errorMessage(deliveryError)})`);
+    }
+  }
+  throw new Error(errors.join("; "));
 }
 
 async function sendPreparedMedia(
@@ -96,6 +112,29 @@ async function renderWechatSafeImage(filePath: string, uploadsDir: string): Prom
   const image = sharp(filePath, { limitInputPixels: false }).rotate().flatten({ background: "#ffffff" }).toColorspace("srgb");
   await image.png().toFile(outputPath);
   return { filePath: outputPath, mimeType: "image/png" };
+}
+
+async function createWechatDeliveryImage(prepared: PreparedMedia, uploadsDir: string): Promise<PreparedMedia | undefined> {
+  if (!prepared.mimeType.startsWith("image/")) return undefined;
+  const day = new Date().toISOString().slice(0, 10);
+  const outputDir = path.join(uploadsDir, "outbound", day);
+  await fs.mkdir(outputDir, { recursive: true });
+  for (const quality of [94, 90, 86]) {
+    const outputPath = path.join(
+      outputDir,
+      `${path.basename(prepared.filePath, path.extname(prepared.filePath))}-wechat-delivery-q${quality}.jpg`,
+    );
+    await sharp(prepared.filePath, { limitInputPixels: false })
+      .rotate()
+      .flatten({ background: "#ffffff" })
+      .jpeg({ quality, mozjpeg: true })
+      .toFile(outputPath);
+    const stat = await fs.stat(outputPath);
+    if (stat.size <= LARGE_IMAGE_FILE_FALLBACK_BYTES || quality === 86) {
+      return { filePath: outputPath, mimeType: "image/jpeg" };
+    }
+  }
+  return undefined;
 }
 
 async function uploadToWeChatCdn(params: SendMediaFileOptions & { mediaType: number }): Promise<UploadedFileInfo> {
@@ -209,4 +248,11 @@ function mediaTypeFromMime(mimeType: string): number {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error ?? "unknown error");
+}
+
+function uploadTypeName(uploadType: number): string {
+  if (uploadType === UploadMediaType.IMAGE) return "image";
+  if (uploadType === UploadMediaType.VIDEO) return "video";
+  if (uploadType === UploadMediaType.FILE) return "file";
+  return `media_type_${uploadType}`;
 }

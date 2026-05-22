@@ -128,3 +128,58 @@ test("mediaTypeForUpload sends very large images as files", () => {
   assert.equal(mediaTypeForUpload("image/png", 19 * 1024 * 1024), UploadMediaType.IMAGE);
   assert.equal(mediaTypeForUpload("image/png", 21 * 1024 * 1024), UploadMediaType.FILE);
 });
+
+test("sendMediaFile creates a JPEG delivery image after image and file upload fail", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wechat-codex-outbound-"));
+  const pngPath = path.join(tmp, "large.png");
+  await sharp({
+    create: {
+      width: 64,
+      height: 48,
+      channels: 3,
+      background: "#335577",
+    },
+  }).png().toFile(pngPath);
+
+  const uploadTypes: number[] = [];
+  const sentBodies: unknown[] = [];
+  const client = {
+    getUploadUrl: async ({ body }: { body: { media_type: number } }) => {
+      uploadTypes.push(body.media_type);
+      return { upload_full_url: `https://upload.example/${uploadTypes.length}` };
+    },
+    sendMessage: async ({ body }: { body: unknown }) => {
+      sentBodies.push(body);
+      return {};
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
+  globalThis.fetch = (async () => {
+    fetchCount += 1;
+    if (fetchCount <= 2) throw new Error("fetch failed");
+    return new Response("", {
+      status: 200,
+      headers: { "x-encrypted-param": "download-param" },
+    });
+  }) as typeof fetch;
+
+  try {
+    await sendMediaFile({
+      client: client as never,
+      token: "token",
+      toUserId: "user-1",
+      filePath: pngPath,
+      cdnBaseUrl: "https://cdn.example.test",
+      uploadsDir: tmp,
+      maxBytes: 100 * 1024 * 1024,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(uploadTypes, [UploadMediaType.IMAGE, UploadMediaType.FILE, UploadMediaType.IMAGE]);
+  const sent = sentBodies[0] as { msg?: { item_list?: Array<{ type?: number; image_item?: unknown }> } };
+  assert.equal(sent.msg?.item_list?.[0]?.type, MessageItemType.IMAGE);
+  assert.ok(sent.msg?.item_list?.[0]?.image_item);
+});
