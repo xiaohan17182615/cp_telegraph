@@ -31,14 +31,33 @@ interface PreparedMedia {
 }
 
 export async function sendMediaFile(options: SendMediaFileOptions): Promise<void> {
-  let prepared = await prepareMediaFileForUpload(options.filePath, options.uploadsDir);
+  const prepared = await prepareMediaFileForUpload(options.filePath, options.uploadsDir);
   const uploadType = mediaTypeFromMime(prepared.mimeType);
+  try {
+    await sendPreparedMedia(options, prepared, uploadType);
+    return;
+  } catch (error) {
+    if (uploadType !== UploadMediaType.IMAGE) throw error;
+    try {
+      await sendPreparedMedia(options, prepared, UploadMediaType.FILE);
+      return;
+    } catch (fallbackError) {
+      throw new Error(`image upload failed (${errorMessage(error)}); file fallback failed (${errorMessage(fallbackError)})`);
+    }
+  }
+}
+
+async function sendPreparedMedia(
+  options: SendMediaFileOptions,
+  prepared: PreparedMedia,
+  uploadType: number,
+): Promise<void> {
   const uploaded = await uploadToWeChatCdn({
     ...options,
     filePath: prepared.filePath,
     mediaType: uploadType,
   });
-  const mediaItem = buildMediaItem(prepared.filePath, prepared.mimeType, uploaded);
+  const mediaItem = buildMediaItem(prepared.filePath, prepared.mimeType, uploaded, uploadType);
   const items: WeixinMessageItem[] = [
     ...(options.caption ? [{ type: MessageItemType.TEXT, text_item: { text: options.caption } }] : []),
     mediaItem,
@@ -124,13 +143,13 @@ async function uploadToWeChatCdn(params: SendMediaFileOptions & { mediaType: num
   };
 }
 
-function buildMediaItem(filePath: string, mimeType: string, uploaded: UploadedFileInfo): WeixinMessageItem {
+function buildMediaItem(filePath: string, mimeType: string, uploaded: UploadedFileInfo, uploadType: number): WeixinMessageItem {
   const media = {
     encrypt_query_param: uploaded.downloadEncryptedQueryParam,
     aes_key: Buffer.from(uploaded.aeskey).toString("base64"),
     encrypt_type: 1,
   };
-  if (mimeType.startsWith("image/")) {
+  if (uploadType === UploadMediaType.IMAGE && mimeType.startsWith("image/")) {
     return {
       type: MessageItemType.IMAGE,
       image_item: {
@@ -139,7 +158,7 @@ function buildMediaItem(filePath: string, mimeType: string, uploaded: UploadedFi
       },
     };
   }
-  if (mimeType.startsWith("video/")) {
+  if (uploadType === UploadMediaType.VIDEO && mimeType.startsWith("video/")) {
     return {
       type: MessageItemType.VIDEO,
       video_item: {
@@ -176,4 +195,8 @@ function mediaTypeFromMime(mimeType: string): number {
   if (mimeType.startsWith("image/")) return UploadMediaType.IMAGE;
   if (mimeType.startsWith("video/")) return UploadMediaType.VIDEO;
   return UploadMediaType.FILE;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error ?? "unknown error");
 }

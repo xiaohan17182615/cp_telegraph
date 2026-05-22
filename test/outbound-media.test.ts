@@ -4,7 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
-import { prepareMediaFileForUpload } from "../src/weixin/outbound-media.js";
+import { prepareMediaFileForUpload, sendMediaFile } from "../src/weixin/outbound-media.js";
+import { MessageItemType, UploadMediaType } from "../src/weixin/types.js";
 
 test("prepareMediaFileForUpload renders SVG as opaque PNG", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wechat-codex-outbound-"));
@@ -65,4 +66,60 @@ test("prepareMediaFileForUpload keeps JPEG bytes unchanged", async () => {
   assert.equal(prepared.filePath, jpgPath);
   assert.equal(prepared.mimeType, "image/jpeg");
   assert.deepEqual(fs.readFileSync(prepared.filePath), before);
+});
+
+test("sendMediaFile falls back to file item when image upload fails", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wechat-codex-outbound-"));
+  const pngPath = path.join(tmp, "large.png");
+  await sharp({
+    create: {
+      width: 32,
+      height: 24,
+      channels: 3,
+      background: "#224466",
+    },
+  }).png().toFile(pngPath);
+
+  const uploadTypes: number[] = [];
+  const sentBodies: unknown[] = [];
+  const client = {
+    getUploadUrl: async ({ body }: { body: { media_type: number } }) => {
+      uploadTypes.push(body.media_type);
+      return { upload_full_url: `https://upload.example/${body.media_type}` };
+    },
+    sendMessage: async ({ body }: { body: unknown }) => {
+      sentBodies.push(body);
+      return {};
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
+  globalThis.fetch = (async () => {
+    fetchCount += 1;
+    if (fetchCount === 1) throw new Error("fetch failed");
+    return new Response("", {
+      status: 200,
+      headers: { "x-encrypted-param": "download-param" },
+    });
+  }) as typeof fetch;
+
+  try {
+    await sendMediaFile({
+      client: client as never,
+      token: "token",
+      toUserId: "user-1",
+      filePath: pngPath,
+      cdnBaseUrl: "https://cdn.example.test",
+      uploadsDir: tmp,
+      maxBytes: 100 * 1024 * 1024,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(uploadTypes, [UploadMediaType.IMAGE, UploadMediaType.FILE]);
+  assert.equal(sentBodies.length, 1);
+  const sent = sentBodies[0] as { msg?: { item_list?: Array<{ type?: number; file_item?: { file_name?: string } }> } };
+  assert.equal(sent.msg?.item_list?.[0]?.type, MessageItemType.FILE);
+  assert.equal(sent.msg?.item_list?.[0]?.file_item?.file_name, "large.png");
 });
