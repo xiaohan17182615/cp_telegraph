@@ -13,7 +13,7 @@ test("loadConfig applies safe defaults", () => {
   assert.equal(config.typingEnabled, true);
   assert.equal(config.workingNotice, false);
   assert.equal(config.mediaMaxBytes, 100 * 1024 * 1024);
-  assert.equal(config.inboundMergeWindowMs, 3000);
+  assert.equal(config.inboundMergeWindowMs, 15_000);
   assert.equal(config.codexRunner, "exec");
   assert.equal(config.codexModel, "gpt-5.5");
   assert.equal(config.codexReasoningEffort, "xhigh");

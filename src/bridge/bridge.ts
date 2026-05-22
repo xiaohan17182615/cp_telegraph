@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import type { AppConfig } from "../config.js";
 import { JsonStateStore, type RouteState } from "../state.js";
@@ -422,15 +424,31 @@ function buildCodexPrompt(userPrompt: string, attachmentNote: string, nativeImag
 
 function uniqueArtifactPaths(paths: string[]): string[] {
   const out: string[] = [];
-  const seen = new Set<string>();
+  const seenPaths = new Set<string>();
+  const seenContent = new Set<string>();
   for (const item of paths) {
     const normalized = path.resolve(item);
-    const key = process.platform === "win32" ? normalized.toLowerCase() : normalized;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const pathKey = process.platform === "win32" ? normalized.toLowerCase() : normalized;
+    if (seenPaths.has(pathKey)) continue;
+    const contentKey = artifactContentKey(normalized);
+    if (contentKey && seenContent.has(contentKey)) continue;
+    seenPaths.add(pathKey);
+    if (contentKey) seenContent.add(contentKey);
     out.push(normalized);
   }
   return out;
+}
+
+function artifactContentKey(filePath: string): string | undefined {
+  try {
+    const realPath = fs.realpathSync.native(filePath);
+    const stat = fs.statSync(realPath);
+    if (!stat.isFile()) return undefined;
+    const hash = crypto.createHash("sha256").update(fs.readFileSync(realPath)).digest("hex");
+    return `${stat.size}:${hash}`;
+  } catch {
+    return undefined;
+  }
 }
 
 function normalizeWechatReply(text: string): string {

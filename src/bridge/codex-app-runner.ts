@@ -336,16 +336,13 @@ function textFromThreadItem(item: Record<string, unknown> | undefined): string |
   return undefined;
 }
 
-function artifactsFromThreadItem(item: Record<string, unknown> | undefined): string[] {
+export function artifactsFromThreadItem(item: Record<string, unknown> | undefined): string[] {
   if (!item) return [];
-  if (item.type === "imageView") {
-    const imagePath = stringField(item, "path");
-    return imagePath ? [imagePath] : [];
-  }
   if (item.type !== "imageGeneration") return [];
   const savedPath = stringField(item, "savedPath");
   const result = stringField(item, "result");
-  return [savedPath, result].filter((value): value is string => Boolean(value && path.isAbsolute(value)));
+  const artifactPath = savedPath || result;
+  return artifactPath && path.isAbsolute(artifactPath) ? [artifactPath] : [];
 }
 
 function normalizeText(textParts: string[], artifacts: string[]): string {

@@ -46,3 +46,23 @@ test("prepareMediaFileForUpload keeps opaque PNG bytes unchanged", async () => {
   assert.equal(prepared.mimeType, "image/png");
   assert.deepEqual(fs.readFileSync(prepared.filePath), before);
 });
+
+test("prepareMediaFileForUpload keeps JPEG bytes unchanged", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wechat-codex-outbound-"));
+  const jpgPath = path.join(tmp, "poster.jpg");
+  await sharp({
+    create: {
+      width: 32,
+      height: 24,
+      channels: 3,
+      background: "#663399",
+    },
+  }).jpeg({ quality: 91 }).toFile(jpgPath);
+  const before = fs.readFileSync(jpgPath);
+
+  const prepared = await prepareMediaFileForUpload(jpgPath, path.join(tmp, "uploads"));
+
+  assert.equal(prepared.filePath, jpgPath);
+  assert.equal(prepared.mimeType, "image/jpeg");
+  assert.deepEqual(fs.readFileSync(prepared.filePath), before);
+});

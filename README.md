@@ -66,7 +66,7 @@ WECHAT_CODEX_BOT_AGENT=WechatCodexBridge/0.1.0
 WECHAT_CODEX_PAIRING_REQUIRED=true
 WECHAT_CODEX_GROUP_TRIGGER=@codex
 WECHAT_CODEX_DOWNLOAD_MEDIA=true
-WECHAT_CODEX_INBOUND_MERGE_WINDOW_MS=3000
+WECHAT_CODEX_INBOUND_MERGE_WINDOW_MS=15000
 WECHAT_CODEX_MEDIA_MAX_BYTES=104857600
 WECHAT_CODEX_TYPING_ENABLED=true
 WECHAT_CODEX_WORKING_NOTICE=false
@@ -117,6 +117,6 @@ powershell -ExecutionPolicy Bypass -File scripts/service/install-windows-task.ps
 
 微信 iLink 是腾讯 `@tencent-weixin/openclaw-weixin` 官方插件正在使用的 Bot 通信通道，整体比旧式逆向微信协议更正规、更稳定。本项目是对 iLink HTTP 协议的独立轻量实现，不直接依赖官方插件，因此会跟随官方插件和后端协议变化进行兼容更新；群聊能力也以官方实际返回和能力声明为准。
 
-媒体说明：入站媒体会保存到 `WECHAT_CODEX_HOME/state/uploads/inbound`。出站 artifact 会走 `getuploadurl -> AES-128-ECB 加密上传 CDN -> sendmessage` 流程；普通 PNG/JPG/WebP/GIF 会原样上传，不做有损压缩；SVG 或透明图片会先渲染成白底 PNG；docx/xlsx/pptx/PDF/HTML 等会作为文件消息发送。
+媒体说明：入站媒体会保存到 `WECHAT_CODEX_HOME/state/uploads/inbound`。默认会等待 15 秒把连续图片/文件和随后文字合并成一次任务。出站 artifact 会走 `getuploadurl -> AES-128-ECB 加密上传 CDN -> sendmessage` 流程；普通 PNG/JPG/WebP/GIF 会原样上传，不做有损压缩；SVG 或透明图片会先渲染成白底 PNG；docx/xlsx/pptx/PDF/HTML 等会作为文件消息发送。
 
 更多说明见 `docs/security.md` 和 `docs/architecture.md`。
