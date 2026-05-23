@@ -327,12 +327,12 @@ export class WechatCodexBridge {
     let replyText = normalizeWechatReply(stripArtifactDirectives(text));
     if (artifacts.length > 0 && imageRequest) {
       replyText = "已生成图片，下面发送。";
+    } else if (artifacts.length > 0) {
+      replyText = "已生成文件，下面发送。";
     } else if (artifacts.length === 0 && imageRequest) {
       const poster = await createFallbackPoster(prompt, cwd);
       artifacts.push(poster.path);
       if (!replyText || isPlaceholderArtifactReply(replyText)) replyText = posterReadyText(prompt);
-    } else if (!replyText && artifacts.length > 0) {
-      replyText = "已生成文件，下面发送。";
     } else if (!replyText) {
       replyText = normalizeWechatReply(text);
     }
@@ -413,6 +413,7 @@ function buildCodexPrompt(userPrompt: string, attachmentNote: string, nativeImag
     "- 避免表格和长链接列表；需要来源时，只放一行简短参考，最多 2 个链接。",
     "- 实时查询要给出结果对应的具体日期/时间和答案，少说免责声明。",
     "- 代码/服务器任务要概括结果、关键改动、验证结果，以及是否需要用户操作。",
+    "- 只要你创建、保存或整理了任何本地文件（例如 docx、xlsx、pptx、pdf、html、png、jpg、zip 等），最后必须单独输出一行 `ARTIFACT: <absolute path>`，路径必须是绝对路径。",
     imageInstruction,
     "- 不要只回复“我会用 imagegen”这类未来计划；要实际创建 artifact，或明确说明无法创建的原因。",
     "",

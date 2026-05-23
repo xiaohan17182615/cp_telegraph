@@ -24,6 +24,17 @@ test("extractArtifactPaths finds generated office documents", () => {
   assert.equal(stripArtifactDirectives(text), "已整理完成");
 });
 
+test("extractArtifactPaths accepts loose file references", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wechat-codex-artifact-"));
+  const file = path.join(tmp, "1.docx");
+  fs.writeFileSync(file, "fake docx");
+
+  assert.deepEqual(extractArtifactPaths("已生成：`1.docx`", tmp), [file]);
+  assert.deepEqual(extractArtifactPaths("文件在这里：`1.docx`", tmp), [file]);
+  assert.deepEqual(extractArtifactPaths("`1.docx`", tmp), [file]);
+  assert.equal(stripArtifactDirectives("文件在这里：`1.docx`\n内容：wycdsb"), "内容：wycdsb");
+});
+
 test("artifact helpers detect image requests and placeholder replies", () => {
   assert.equal(isImageArtifactRequest("生成北戴河旅游海报"), true);
   assert.equal(isImageArtifactRequest("查一下天气"), false);

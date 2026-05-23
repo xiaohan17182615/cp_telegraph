@@ -3,16 +3,18 @@ import path from "node:path";
 
 const ARTIFACT_EXTENSION_SOURCE = "png|jpe?g|webp|gif|svg|pdf|html?|docx?|xlsx?|pptx?|rtf";
 const ARTIFACT_EXTENSIONS = new RegExp(`\\.(?:${ARTIFACT_EXTENSION_SOURCE})$`, "i");
-const ARTIFACT_WORDS = /(artifact|output|file|path|image|poster|海报|图片|图像|文件|文档|表格|演示|附件|产物)\s*[:：]/i;
+const ARTIFACT_LINE = /(artifact|output|file|path|image|poster|generated|saved|created|海报|图片|图像|文件|文档|表格|演示|附件|产物|生成|保存|输出|发给|发送|这里|位置)/i;
+const ARTIFACT_DIRECTIVE = /(artifact|output|file|path|image|poster|generated|saved|created|海报|图片|图像|文件|文档|表格|演示|附件|产物|生成|保存|输出|发给|发送|这里|位置)\s*(?:在这里|位置|路径)?\s*[:：]/i;
 
 export function extractArtifactPaths(text: string, cwd: string): string[] {
   const out = new Set<string>();
   for (const line of text.split(/\r?\n/)) {
-    if (ARTIFACT_WORDS.test(line)) {
-      for (const candidate of extractPathLikes(line)) {
-        const resolved = resolveArtifactPath(candidate, cwd);
-        if (resolved) out.add(resolved);
-      }
+    const candidates = extractPathLikes(line);
+    if (candidates.length === 0) continue;
+    if (!ARTIFACT_LINE.test(line) && !isPathOnlyLine(line, candidates)) continue;
+    for (const candidate of candidates) {
+      const resolved = resolveArtifactPath(candidate, cwd);
+      if (resolved) out.add(resolved);
     }
   }
   return [...out];
@@ -21,7 +23,11 @@ export function extractArtifactPaths(text: string, cwd: string): string[] {
 export function stripArtifactDirectives(text: string): string {
   return text
     .split(/\r?\n/)
-    .filter((line) => !ARTIFACT_WORDS.test(line))
+    .filter((line) => {
+      const candidates = extractPathLikes(line);
+      if (candidates.length === 0) return true;
+      return !ARTIFACT_DIRECTIVE.test(line) && !isPathOnlyLine(line, candidates);
+    })
     .join("\n")
     .trim();
 }
@@ -50,6 +56,11 @@ function extractPathLikes(text: string): string[] {
   const relative = new RegExp(`((?:\\.{1,2}[\\\\/]|wechat-codex-artifacts[\\\\/])?[^\\s)]+?\\.(?:${ARTIFACT_EXTENSION_SOURCE}))`, "gi");
   for (const match of text.matchAll(relative)) out.push(match[1] ?? "");
   return out;
+}
+
+function isPathOnlyLine(line: string, candidates: string[]): boolean {
+  const normalized = line.trim().replace(/^[`'"\s]+|[`'"\s,，。.)）]+$/g, "");
+  return candidates.some((candidate) => normalized === cleanCandidate(candidate));
 }
 
 function resolveArtifactPath(candidate: string, cwd: string): string | undefined {
