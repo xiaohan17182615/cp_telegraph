@@ -32,6 +32,8 @@ interface PreparedMedia {
 
 const LARGE_IMAGE_FILE_FALLBACK_BYTES = 20 * 1024 * 1024;
 const CDN_UPLOAD_TIMEOUT_MS = 90_000;
+const CDN_UPLOAD_ATTEMPTS = 3;
+const CDN_UPLOAD_RETRY_DELAY_MS = 250;
 
 export async function sendMediaFile(options: SendMediaFileOptions): Promise<void> {
   const prepared = await prepareMediaFileForUpload(options.filePath, options.uploadsDir);
@@ -142,6 +144,22 @@ async function uploadToWeChatCdn(params: SendMediaFileOptions & { mediaType: num
   if (plaintext.length > params.maxBytes) {
     throw new Error(`outbound media exceeds max size: ${plaintext.length} > ${params.maxBytes}`);
   }
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= CDN_UPLOAD_ATTEMPTS; attempt += 1) {
+    try {
+      return await uploadToWeChatCdnOnce(params, plaintext);
+    } catch (error) {
+      lastError = error;
+      if (attempt < CDN_UPLOAD_ATTEMPTS) await delay(CDN_UPLOAD_RETRY_DELAY_MS * attempt);
+    }
+  }
+  throw new Error(`CDN upload failed after ${CDN_UPLOAD_ATTEMPTS} attempts: ${errorMessage(lastError)}`);
+}
+
+async function uploadToWeChatCdnOnce(
+  params: SendMediaFileOptions & { mediaType: number },
+  plaintext: Buffer,
+): Promise<UploadedFileInfo> {
   const filekey = crypto.randomBytes(16).toString("hex");
   const aeskey = crypto.randomBytes(16);
   const aeskeyHex = aeskey.toString("hex");
@@ -185,6 +203,10 @@ async function uploadToWeChatCdn(params: SendMediaFileOptions & { mediaType: num
     fileSize: plaintext.length,
     fileSizeCiphertext: ciphertext.length,
   };
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function buildMediaItem(filePath: string, mimeType: string, uploaded: UploadedFileInfo, uploadType: number): WeixinMessageItem {

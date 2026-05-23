@@ -96,7 +96,7 @@ test("sendMediaFile falls back to file item when image upload fails", async () =
   let fetchCount = 0;
   globalThis.fetch = (async () => {
     fetchCount += 1;
-    if (fetchCount === 1) throw new Error("fetch failed");
+    if (fetchCount <= 3) throw new Error("fetch failed");
     return new Response("", {
       status: 200,
       headers: { "x-encrypted-param": "download-param" },
@@ -117,7 +117,12 @@ test("sendMediaFile falls back to file item when image upload fails", async () =
     globalThis.fetch = originalFetch;
   }
 
-  assert.deepEqual(uploadTypes, [UploadMediaType.IMAGE, UploadMediaType.FILE]);
+  assert.deepEqual(uploadTypes, [
+    UploadMediaType.IMAGE,
+    UploadMediaType.IMAGE,
+    UploadMediaType.IMAGE,
+    UploadMediaType.FILE,
+  ]);
   assert.equal(sentBodies.length, 1);
   const sent = sentBodies[0] as { msg?: { item_list?: Array<{ type?: number; file_item?: { file_name?: string } }> } };
   assert.equal(sent.msg?.item_list?.[0]?.type, MessageItemType.FILE);
@@ -127,6 +132,58 @@ test("sendMediaFile falls back to file item when image upload fails", async () =
 test("mediaTypeForUpload sends very large images as files", () => {
   assert.equal(mediaTypeForUpload("image/png", 19 * 1024 * 1024), UploadMediaType.IMAGE);
   assert.equal(mediaTypeForUpload("image/png", 21 * 1024 * 1024), UploadMediaType.FILE);
+});
+
+test("sendMediaFile retries file CDN uploads with fresh upload URLs", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wechat-codex-outbound-"));
+  const docxPath = path.join(tmp, "answers.docx");
+  fs.writeFileSync(docxPath, "docx bytes");
+
+  const uploadFileKeys: string[] = [];
+  const sentBodies: unknown[] = [];
+  const client = {
+    getUploadUrl: async ({ body }: { body: { filekey: string; media_type: number } }) => {
+      uploadFileKeys.push(body.filekey);
+      assert.equal(body.media_type, UploadMediaType.FILE);
+      return { upload_full_url: `https://upload.example/${uploadFileKeys.length}` };
+    },
+    sendMessage: async ({ body }: { body: unknown }) => {
+      sentBodies.push(body);
+      return {};
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
+  globalThis.fetch = (async () => {
+    fetchCount += 1;
+    if (fetchCount < 3) return new Response("cdn busy", { status: 500 });
+    return new Response("", {
+      status: 200,
+      headers: { "x-encrypted-param": "download-param" },
+    });
+  }) as typeof fetch;
+
+  try {
+    await sendMediaFile({
+      client: client as never,
+      token: "token",
+      toUserId: "user-1",
+      filePath: docxPath,
+      cdnBaseUrl: "https://cdn.example.test",
+      uploadsDir: tmp,
+      maxBytes: 100 * 1024 * 1024,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(fetchCount, 3);
+  assert.equal(uploadFileKeys.length, 3);
+  assert.equal(new Set(uploadFileKeys).size, 3);
+  assert.equal(sentBodies.length, 1);
+  const sent = sentBodies[0] as { msg?: { item_list?: Array<{ type?: number; file_item?: { file_name?: string } }> } };
+  assert.equal(sent.msg?.item_list?.[0]?.type, MessageItemType.FILE);
+  assert.equal(sent.msg?.item_list?.[0]?.file_item?.file_name, "answers.docx");
 });
 
 test("sendMediaFile creates a JPEG delivery image after image and file upload fail", async () => {
@@ -157,7 +214,7 @@ test("sendMediaFile creates a JPEG delivery image after image and file upload fa
   let fetchCount = 0;
   globalThis.fetch = (async () => {
     fetchCount += 1;
-    if (fetchCount <= 2) throw new Error("fetch failed");
+    if (fetchCount <= 6) throw new Error("fetch failed");
     return new Response("", {
       status: 200,
       headers: { "x-encrypted-param": "download-param" },
@@ -178,7 +235,15 @@ test("sendMediaFile creates a JPEG delivery image after image and file upload fa
     globalThis.fetch = originalFetch;
   }
 
-  assert.deepEqual(uploadTypes, [UploadMediaType.IMAGE, UploadMediaType.FILE, UploadMediaType.IMAGE]);
+  assert.deepEqual(uploadTypes, [
+    UploadMediaType.IMAGE,
+    UploadMediaType.IMAGE,
+    UploadMediaType.IMAGE,
+    UploadMediaType.FILE,
+    UploadMediaType.FILE,
+    UploadMediaType.FILE,
+    UploadMediaType.IMAGE,
+  ]);
   const sent = sentBodies[0] as { msg?: { item_list?: Array<{ type?: number; image_item?: unknown }> } };
   assert.equal(sent.msg?.item_list?.[0]?.type, MessageItemType.IMAGE);
   assert.ok(sent.msg?.item_list?.[0]?.image_item);
