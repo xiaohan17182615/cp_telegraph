@@ -227,8 +227,12 @@ test("sendMediaFile preserves original file through public full_url fallback whe
   }
 
   assert.deepEqual(uploadTypes, [UploadMediaType.FILE, UploadMediaType.FILE, UploadMediaType.FILE]);
-  assert.equal(sentBodies.length, 1);
-  const sent = sentBodies[0] as { msg?: { item_list?: Array<{ type?: number; file_item?: { file_name?: string; len?: string; media?: { full_url?: string; encrypt_type?: number } } }> } };
+  assert.equal(sentBodies.length, 2);
+  const notice = sentBodies[0] as { msg?: { item_list?: Array<{ type?: number; text_item?: { text?: string } }> } };
+  assert.equal(notice.msg?.item_list?.[0]?.type, MessageItemType.TEXT);
+  assert.match(notice.msg?.item_list?.[0]?.text_item?.text ?? "", /big answers\.docx/);
+  assert.match(notice.msg?.item_list?.[0]?.text_item?.text ?? "", /https:\/\/files\.example\.test\/wechat\//);
+  const sent = sentBodies[1] as { msg?: { item_list?: Array<{ type?: number; file_item?: { file_name?: string; len?: string; media?: { full_url?: string; encrypt_type?: number } } }> } };
   const item = sent.msg?.item_list?.[0];
   assert.equal(item?.type, MessageItemType.FILE);
   assert.equal(item?.file_item?.file_name, "big answers.docx");
@@ -297,8 +301,11 @@ test("sendMediaFile preserves original image through public fallback before loss
     UploadMediaType.FILE,
     UploadMediaType.FILE,
   ]);
-  assert.equal(sentBodies.length, 1);
-  const sent = sentBodies[0] as { msg?: { item_list?: Array<{ type?: number; file_item?: { file_name?: string; media?: { full_url?: string } } }> } };
+  assert.equal(sentBodies.length, 2);
+  const notice = sentBodies[0] as { msg?: { item_list?: Array<{ type?: number; text_item?: { text?: string } }> } };
+  assert.equal(notice.msg?.item_list?.[0]?.type, MessageItemType.TEXT);
+  assert.match(notice.msg?.item_list?.[0]?.text_item?.text ?? "", /wide poster\.png/);
+  const sent = sentBodies[1] as { msg?: { item_list?: Array<{ type?: number; file_item?: { file_name?: string; media?: { full_url?: string } } }> } };
   const item = sent.msg?.item_list?.[0];
   assert.equal(item?.type, MessageItemType.FILE);
   assert.equal(item?.file_item?.file_name, "wide poster.png");

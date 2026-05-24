@@ -119,6 +119,6 @@ powershell -ExecutionPolicy Bypass -File scripts/service/install-windows-task.ps
 
 微信 iLink 是腾讯 `@tencent-weixin/openclaw-weixin` 官方插件正在使用的 Bot 通信通道，整体比旧式逆向微信协议更正规、更稳定。本项目是对 iLink HTTP 协议的独立轻量实现，不直接依赖官方插件，因此会跟随官方插件和后端协议变化进行兼容更新；群聊能力也以官方实际返回和能力声明为准。
 
-媒体说明：入站媒体会保存到 `WECHAT_CODEX_HOME/state/uploads/inbound`。默认会等待 15 秒把连续图片/文件和随后文字合并成一次任务。出站 artifact 默认走 `getuploadurl -> AES-128-ECB 加密上传 CDN -> sendmessage` 流程；普通 PNG/JPG/WebP/GIF 会原样上传，不做有损压缩；SVG 或透明图片会先渲染成白底 PNG。若配置了 `WECHAT_CODEX_PUBLIC_ARTIFACT_DIR` 和 `WECHAT_CODEX_PUBLIC_ARTIFACT_BASE_URL`，当 iLink CDN 对原始文件返回 500 或超时时，桥接会把原始字节复制到该 HTTPS 目录，并用 `media.full_url` 发送文件消息，避免为了成功投递而压缩图片或重生成 docx/xlsx/pptx/PDF/HTML。
+媒体说明：入站媒体会保存到 `WECHAT_CODEX_HOME/state/uploads/inbound`。默认会等待 15 秒把连续图片/文件和随后文字合并成一次任务。出站 artifact 默认走 `getuploadurl -> AES-128-ECB 加密上传 CDN -> sendmessage` 流程；普通 PNG/JPG/WebP/GIF 会原样上传，不做有损压缩；SVG 或透明图片会先渲染成白底 PNG。若配置了 `WECHAT_CODEX_PUBLIC_ARTIFACT_DIR` 和 `WECHAT_CODEX_PUBLIC_ARTIFACT_BASE_URL`，当 iLink CDN 对原始文件返回 500 或超时时，桥接会把原始字节复制到该 HTTPS 目录，先发送原始文件下载链接，再尝试用 `media.full_url` 发送文件消息，避免为了成功投递而压缩图片或重生成 docx/xlsx/pptx/PDF/HTML。
 
 更多说明见 `docs/security.md` 和 `docs/architecture.md`。

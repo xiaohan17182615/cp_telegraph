@@ -104,6 +104,7 @@ async function sendPublicLinkedFile(options: SendMediaFileOptions, prepared: Pre
   const mediaItem = buildPublicFileItem(prepared.filePath, published.url, stat.size);
   const items: WeixinMessageItem[] = [
     ...(options.caption ? [{ type: MessageItemType.TEXT, text_item: { text: options.caption } }] : []),
+    { type: MessageItemType.TEXT, text_item: { text: buildPublicArtifactNotice(prepared.filePath, published.url, stat.size) } },
     mediaItem,
   ];
   for (const item of items) {
@@ -327,6 +328,20 @@ function buildPublicFileItem(filePath: string, fullUrl: string, size: number): W
       len: String(size),
     },
   };
+}
+
+function buildPublicArtifactNotice(filePath: string, fullUrl: string, size: number): string {
+  return [
+    "iLink CDN 暂时无法接收原始文件，已改用原始文件链接发送：",
+    `${path.basename(filePath)} (${formatBytes(size)})`,
+    fullUrl,
+  ].join("\n");
+}
+
+function formatBytes(size: number): string {
+  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(2)} MB`;
+  if (size >= 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${size} B`;
 }
 
 function buildSingleItemMessage(toUserId: string, item: WeixinMessageItem, contextToken?: string): WeixinSendMessageRequest {
