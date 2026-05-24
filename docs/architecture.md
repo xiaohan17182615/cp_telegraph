@@ -40,5 +40,7 @@ flowchart LR
 - Group prompts require `WECHAT_CODEX_GROUP_TRIGGER` by default; commands still use `/...`.
 - The latest inbound WeChat `context_token` is cached per route and echoed in outbound replies, matching Tencent's plugin protocol contract.
 - Inbound media is downloaded and AES-128-ECB decrypted when `WECHAT_CODEX_DOWNLOAD_MEDIA=true`; Codex receives local paths in the prompt metadata.
-- Outbound artifact delivery uses the full `getuploadurl -> AES-128-ECB encrypted CDN upload -> media item send` pipeline. SVG artifacts are rendered to PNG before image delivery.
+- Outbound artifact delivery follows Tencent's `@tencent-weixin/openclaw-weixin` flow: `getuploadurl -> AES-128-ECB encrypted CDN upload -> sendmessage` with an encrypted CDN media reference. SVG artifacts are rendered to PNG before image delivery.
+- CDN upload retries are reserved for transient server/network failures. HTTP 4xx upload failures are treated as request/auth/protocol problems and are not retried blindly, matching the official plugin's retry shape.
+- `full_url` is treated as a download-link fallback, not the primary media-send protocol. When configured, public artifact fallback first sends a visible HTTPS link, then attempts a best-effort file item using `full_url`; the link is the delivery guarantee.
 - `WECHAT_CODEX_RUNNER=exec` keeps the stable CLI path. `WECHAT_CODEX_RUNNER=app-server` uses the native Codex app-server path, which can expose system skills such as `imagegen`; `auto` uses app-server for image/artifact prompts and exec for normal prompts.

@@ -42,6 +42,13 @@ const CDN_UPLOAD_TIMEOUT_MS = 90_000;
 const CDN_UPLOAD_ATTEMPTS = 3;
 const CDN_UPLOAD_RETRY_DELAY_MS = 250;
 
+class CdnUploadHttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = "CdnUploadHttpError";
+  }
+}
+
 export async function sendMediaFile(options: SendMediaFileOptions): Promise<void> {
   const prepared = await prepareMediaFileForUpload(options.filePath, options.uploadsDir);
   const stat = await fs.stat(prepared.filePath);
@@ -223,6 +230,7 @@ async function uploadToWeChatCdn(params: SendMediaFileOptions & { mediaType: num
       return await uploadToWeChatCdnOnce(params, plaintext);
     } catch (error) {
       lastError = error;
+      if (isCdnClientError(error)) throw error;
       if (attempt < CDN_UPLOAD_ATTEMPTS) await delay(CDN_UPLOAD_RETRY_DELAY_MS * attempt);
     }
   }
@@ -266,7 +274,7 @@ async function uploadToWeChatCdnOnce(
   });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`CDN upload failed: ${response.status} ${text.slice(0, 200)}`);
+    throw new CdnUploadHttpError(response.status, `CDN upload failed: ${response.status} ${text.slice(0, 200)}`);
   }
   const downloadParam = response.headers.get("x-encrypted-param");
   if (!downloadParam) throw new Error("CDN upload response missing x-encrypted-param");
@@ -371,6 +379,10 @@ function mediaTypeFromMime(mimeType: string): number {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error ?? "unknown error");
+}
+
+function isCdnClientError(error: unknown): boolean {
+  return error instanceof CdnUploadHttpError && error.status >= 400 && error.status < 500;
 }
 
 function uploadTypeName(uploadType: number): string {

@@ -186,6 +186,48 @@ test("sendMediaFile retries file CDN uploads with fresh upload URLs", async () =
   assert.equal(sent.msg?.item_list?.[0]?.file_item?.file_name, "answers.docx");
 });
 
+test("sendMediaFile does not retry client-side CDN upload errors", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wechat-codex-outbound-"));
+  const docxPath = path.join(tmp, "answers.docx");
+  fs.writeFileSync(docxPath, "docx bytes");
+
+  const uploadFileKeys: string[] = [];
+  const client = {
+    getUploadUrl: async ({ body }: { body: { filekey: string; media_type: number } }) => {
+      uploadFileKeys.push(body.filekey);
+      assert.equal(body.media_type, UploadMediaType.FILE);
+      return { upload_full_url: `https://upload.example/${uploadFileKeys.length}` };
+    },
+    sendMessage: async () => ({}),
+  };
+  const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
+  globalThis.fetch = (async () => {
+    fetchCount += 1;
+    return new Response("bad request", { status: 403 });
+  }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      sendMediaFile({
+        client: client as never,
+        token: "token",
+        toUserId: "user-1",
+        filePath: docxPath,
+        cdnBaseUrl: "https://cdn.example.test",
+        uploadsDir: tmp,
+        maxBytes: 100 * 1024 * 1024,
+      }),
+      /CDN upload failed: 403 bad request/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(fetchCount, 1);
+  assert.equal(uploadFileKeys.length, 1);
+});
+
 test("sendMediaFile preserves original file through public full_url fallback when CDN rejects it", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wechat-codex-outbound-"));
   const publicDir = path.join(tmp, "public");

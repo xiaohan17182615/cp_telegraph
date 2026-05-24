@@ -88,3 +88,25 @@ test("WeixinClient supports getuploadurl", async () => {
   assert.equal(body.no_need_thumb, true);
   assert.equal(body.base_info.bot_agent, "WechatCodexBridge/0.1.0");
 });
+
+test("WeixinClient reports invalid JSON responses with endpoint context", async () => {
+  const fetchImpl: FetchLike = async () => new Response("<html>gateway error</html>", { status: 200 });
+  const client = new WeixinClient({ baseUrl: "https://example.test", fetchImpl });
+
+  await assert.rejects(
+    client.sendMessage({
+      token: "token",
+      body: {
+        msg: {
+          from_user_id: "",
+          to_user_id: "friend",
+          client_id: "c1",
+          message_type: MessageType.BOT,
+          message_state: MessageState.FINISH,
+          item_list: [{ type: MessageItemType.TEXT, text_item: { text: "hi" } }],
+        },
+      },
+    }),
+    /ilink\/bot\/sendmessage invalid JSON response: <html>gateway error<\/html>/,
+  );
+});

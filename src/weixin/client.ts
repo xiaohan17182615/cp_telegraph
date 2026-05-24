@@ -237,7 +237,12 @@ export class WeixinClient {
 async function parseJson<T>(response: Response, label: string): Promise<T> {
   const text = await response.text();
   if (!response.ok) throw new Error(`${label} http ${response.status}: ${text.slice(0, 300)}`);
-  return (text ? JSON.parse(text) : {}) as T;
+  if (!text) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`${label} invalid JSON response: ${text.slice(0, 300)}`);
+  }
 }
 
 function assertSuccess(response: ApiResponse | undefined, label: string): void {
