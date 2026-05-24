@@ -124,6 +124,9 @@ export class WeixinAdapter {
         cdnBaseUrl: this.config.cdnBaseUrl,
         uploadsDir: this.config.uploadsDir,
         maxBytes: this.config.mediaMaxBytes,
+        publicArtifact: this.config.publicArtifactDir && this.config.publicArtifactBaseUrl
+          ? { dir: this.config.publicArtifactDir, baseUrl: this.config.publicArtifactBaseUrl }
+          : undefined,
         caption,
       });
     });

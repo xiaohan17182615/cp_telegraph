@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
@@ -16,6 +17,12 @@ export interface SendMediaFileOptions {
   uploadsDir: string;
   maxBytes: number;
   caption?: string;
+  publicArtifact?: PublicArtifactOptions;
+}
+
+export interface PublicArtifactOptions {
+  dir: string;
+  baseUrl: string;
 }
 
 interface UploadedFileInfo {
@@ -45,7 +52,17 @@ export async function sendMediaFile(options: SendMediaFileOptions): Promise<void
     return;
   } catch (error) {
     errors.push(`${uploadTypeName(uploadType)} upload failed (${errorMessage(error)})`);
-    if (!prepared.mimeType.startsWith("image/")) throw error;
+    if (!prepared.mimeType.startsWith("image/")) {
+      if (options.publicArtifact) {
+        try {
+          await sendPublicLinkedFile(options, prepared);
+          return;
+        } catch (publicError) {
+          errors.push(`public full_url fallback failed (${errorMessage(publicError)})`);
+        }
+      }
+      throw new Error(errors.join("; "));
+    }
     if (uploadType === UploadMediaType.IMAGE) {
       try {
         await sendPreparedMedia(options, prepared, UploadMediaType.FILE);
@@ -53,6 +70,17 @@ export async function sendMediaFile(options: SendMediaFileOptions): Promise<void
       } catch (fallbackError) {
         errors.push(`file fallback failed (${errorMessage(fallbackError)})`);
       }
+    }
+  }
+  if (options.publicArtifact) {
+    try {
+      await sendPublicLinkedFile(options, {
+        filePath: path.resolve(options.filePath),
+        mimeType: mimeFromFilename(options.filePath),
+      });
+      return;
+    } catch (publicError) {
+      errors.push(`public full_url fallback failed (${errorMessage(publicError)})`);
     }
   }
   const delivery = await createWechatDeliveryImage(prepared, options.uploadsDir);
@@ -67,6 +95,50 @@ export async function sendMediaFile(options: SendMediaFileOptions): Promise<void
     }
   }
   throw new Error(errors.join("; "));
+}
+
+async function sendPublicLinkedFile(options: SendMediaFileOptions, prepared: PreparedMedia): Promise<void> {
+  if (!options.publicArtifact) throw new Error("public artifact fallback is not configured");
+  const published = await publishPublicArtifact(prepared.filePath, options.publicArtifact);
+  const stat = await fs.stat(prepared.filePath);
+  const mediaItem = buildPublicFileItem(prepared.filePath, published.url, stat.size);
+  const items: WeixinMessageItem[] = [
+    ...(options.caption ? [{ type: MessageItemType.TEXT, text_item: { text: options.caption } }] : []),
+    mediaItem,
+  ];
+  for (const item of items) {
+    await options.client.sendMessage({
+      token: options.token,
+      timeoutMs: 30_000,
+      body: buildSingleItemMessage(options.toUserId, item, options.contextToken),
+    });
+  }
+}
+
+async function publishPublicArtifact(filePath: string, options: PublicArtifactOptions): Promise<{ filePath: string; url: string }> {
+  const absolute = path.resolve(filePath);
+  const day = new Date().toISOString().slice(0, 10);
+  const digest = await sha256File(absolute);
+  const fileName = `${digest.slice(0, 16)}-${safePublicFileName(path.basename(absolute))}`;
+  const outputDir = path.join(options.dir, day);
+  await fs.mkdir(outputDir, { recursive: true });
+  const outputPath = path.join(outputDir, fileName);
+  await fs.copyFile(absolute, outputPath);
+  await fs.chmod(outputPath, 0o644).catch(() => undefined);
+  return {
+    filePath: outputPath,
+    url: buildPublicArtifactUrl(options.baseUrl, [day, fileName]),
+  };
+}
+
+async function sha256File(filePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash("sha256");
+    const stream = createReadStream(filePath);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("error", reject);
+    stream.on("end", () => resolve(hash.digest("hex")));
+  });
 }
 
 async function sendPreparedMedia(
@@ -243,6 +315,20 @@ function buildMediaItem(filePath: string, mimeType: string, uploaded: UploadedFi
   };
 }
 
+function buildPublicFileItem(filePath: string, fullUrl: string, size: number): WeixinMessageItem {
+  return {
+    type: MessageItemType.FILE,
+    file_item: {
+      media: {
+        full_url: fullUrl,
+        encrypt_type: 0,
+      },
+      file_name: path.basename(filePath),
+      len: String(size),
+    },
+  };
+}
+
 function buildSingleItemMessage(toUserId: string, item: WeixinMessageItem, contextToken?: string): WeixinSendMessageRequest {
   return {
     msg: {
@@ -277,4 +363,17 @@ function uploadTypeName(uploadType: number): string {
   if (uploadType === UploadMediaType.VIDEO) return "video";
   if (uploadType === UploadMediaType.FILE) return "file";
   return `media_type_${uploadType}`;
+}
+
+function safePublicFileName(value: string): string {
+  return value
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1f]+/g, "-")
+    .replace(/\s+/g, " ")
+    .slice(0, 160)
+    || "artifact.bin";
+}
+
+function buildPublicArtifactUrl(baseUrl: string, segments: string[]): string {
+  return `${baseUrl.replace(/\/+$/g, "")}/${segments.map((segment) => encodeURIComponent(segment)).join("/")}`;
 }

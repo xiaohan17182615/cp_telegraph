@@ -12,7 +12,7 @@
 - 默认下载并解密入站图片、文件、视频和语音为本地文件路径，再交给 Codex。
 - 多张连续图片/文件会在短窗口内与后续文字合并成一次 Codex 任务，适合“几张图加一句要求”的微信操作习惯。
 - 支持 `codex exec` 和实验性 `codex app-server` 两种运行面；app-server 模式可使用 Codex 的系统 skill，例如 `imagegen`。
-- 支持把 Codex 生成的本地图片、PDF、HTML、docx/xlsx/pptx 等 artifact 通过 iLink CDN 上传后发回微信；SVG/透明图片会自动转成微信更稳的白底图片。
+- 支持把 Codex 生成的本地图片、PDF、HTML、docx/xlsx/pptx 等 artifact 发回微信；优先走 iLink CDN，若 CDN 拒绝原始文件，可配置 HTTPS 公开目录用 `media.full_url` 原样投递，不压缩、不重打包。
 - 支持 `/new`、`/cwd`、`/retry`、`/stop`、`/status`、`/routes` 等微信内命令。
 - 微信消息发送带拆分、排队、限速和重试，降低触发风控的概率。
 - 本地状态文件使用单独目录保存，账号 token 和路由状态默认不进入仓库。
@@ -68,6 +68,8 @@ WECHAT_CODEX_GROUP_TRIGGER=@codex
 WECHAT_CODEX_DOWNLOAD_MEDIA=true
 WECHAT_CODEX_INBOUND_MERGE_WINDOW_MS=15000
 WECHAT_CODEX_MEDIA_MAX_BYTES=104857600
+WECHAT_CODEX_PUBLIC_ARTIFACT_DIR=/var/www/wechat-codex-artifacts
+WECHAT_CODEX_PUBLIC_ARTIFACT_BASE_URL=https://example.com/wechat-codex-artifacts
 WECHAT_CODEX_TYPING_ENABLED=true
 WECHAT_CODEX_WORKING_NOTICE=false
 WECHAT_CODEX_HOME=~/.wechat-codex-bridge
@@ -117,6 +119,6 @@ powershell -ExecutionPolicy Bypass -File scripts/service/install-windows-task.ps
 
 微信 iLink 是腾讯 `@tencent-weixin/openclaw-weixin` 官方插件正在使用的 Bot 通信通道，整体比旧式逆向微信协议更正规、更稳定。本项目是对 iLink HTTP 协议的独立轻量实现，不直接依赖官方插件，因此会跟随官方插件和后端协议变化进行兼容更新；群聊能力也以官方实际返回和能力声明为准。
 
-媒体说明：入站媒体会保存到 `WECHAT_CODEX_HOME/state/uploads/inbound`。默认会等待 15 秒把连续图片/文件和随后文字合并成一次任务。出站 artifact 会走 `getuploadurl -> AES-128-ECB 加密上传 CDN -> sendmessage` 流程；普通 PNG/JPG/WebP/GIF 会原样上传，不做有损压缩；SVG 或透明图片会先渲染成白底 PNG；docx/xlsx/pptx/PDF/HTML 等会作为文件消息发送。
+媒体说明：入站媒体会保存到 `WECHAT_CODEX_HOME/state/uploads/inbound`。默认会等待 15 秒把连续图片/文件和随后文字合并成一次任务。出站 artifact 默认走 `getuploadurl -> AES-128-ECB 加密上传 CDN -> sendmessage` 流程；普通 PNG/JPG/WebP/GIF 会原样上传，不做有损压缩；SVG 或透明图片会先渲染成白底 PNG。若配置了 `WECHAT_CODEX_PUBLIC_ARTIFACT_DIR` 和 `WECHAT_CODEX_PUBLIC_ARTIFACT_BASE_URL`，当 iLink CDN 对原始文件返回 500 或超时时，桥接会把原始字节复制到该 HTTPS 目录，并用 `media.full_url` 发送文件消息，避免为了成功投递而压缩图片或重生成 docx/xlsx/pptx/PDF/HTML。
 
 更多说明见 `docs/security.md` 和 `docs/architecture.md`。

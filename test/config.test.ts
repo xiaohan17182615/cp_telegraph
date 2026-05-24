@@ -13,6 +13,8 @@ test("loadConfig applies safe defaults", () => {
   assert.equal(config.typingEnabled, true);
   assert.equal(config.workingNotice, false);
   assert.equal(config.mediaMaxBytes, 100 * 1024 * 1024);
+  assert.equal(config.publicArtifactDir, undefined);
+  assert.equal(config.publicArtifactBaseUrl, undefined);
   assert.equal(config.inboundMergeWindowMs, 15_000);
   assert.equal(config.codexRunner, "exec");
   assert.equal(config.codexModel, "gpt-5.5");
@@ -45,6 +47,8 @@ test("loadConfig parses args and tilde paths", () => {
     WECHAT_CODEX_MODEL: "gpt-5.4",
     WECHAT_CODEX_REASONING_EFFORT: "high",
     WECHAT_CODEX_INBOUND_MERGE_WINDOW_MS: "1200",
+    WECHAT_CODEX_PUBLIC_ARTIFACT_DIR: "~/public-artifacts",
+    WECHAT_CODEX_PUBLIC_ARTIFACT_BASE_URL: "https://files.example.test/wechat/",
   } as NodeJS.ProcessEnv, process.cwd());
   assert.equal(config.homeDir, path.join(os.homedir(), "bridge"));
   assert.deepEqual(config.codexExecArgs, ["--json", "--cd", "C:\\Work Dir"]);
@@ -53,6 +57,8 @@ test("loadConfig parses args and tilde paths", () => {
   assert.equal(config.codexModel, "gpt-5.4");
   assert.equal(config.codexReasoningEffort, "high");
   assert.equal(config.inboundMergeWindowMs, 1200);
+  assert.equal(config.publicArtifactDir, path.join(os.homedir(), "public-artifacts"));
+  assert.equal(config.publicArtifactBaseUrl, "https://files.example.test/wechat");
 });
 
 test("loadConfig sanitizes bot agent as official UA tokens", () => {

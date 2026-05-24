@@ -186,6 +186,129 @@ test("sendMediaFile retries file CDN uploads with fresh upload URLs", async () =
   assert.equal(sent.msg?.item_list?.[0]?.file_item?.file_name, "answers.docx");
 });
 
+test("sendMediaFile preserves original file through public full_url fallback when CDN rejects it", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wechat-codex-outbound-"));
+  const publicDir = path.join(tmp, "public");
+  const docxPath = path.join(tmp, "big answers.docx");
+  const original = Buffer.from("docx bytes that must not change");
+  fs.writeFileSync(docxPath, original);
+
+  const uploadTypes: number[] = [];
+  const sentBodies: unknown[] = [];
+  const client = {
+    getUploadUrl: async ({ body }: { body: { media_type: number } }) => {
+      uploadTypes.push(body.media_type);
+      return { upload_full_url: `https://upload.example/${uploadTypes.length}` };
+    },
+    sendMessage: async ({ body }: { body: unknown }) => {
+      sentBodies.push(body);
+      return {};
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response("cdn rejects this file", { status: 500 })) as typeof fetch;
+
+  try {
+    await sendMediaFile({
+      client: client as never,
+      token: "token",
+      toUserId: "user-1",
+      filePath: docxPath,
+      cdnBaseUrl: "https://cdn.example.test",
+      uploadsDir: tmp,
+      maxBytes: 100 * 1024 * 1024,
+      publicArtifact: {
+        dir: publicDir,
+        baseUrl: "https://files.example.test/wechat",
+      },
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(uploadTypes, [UploadMediaType.FILE, UploadMediaType.FILE, UploadMediaType.FILE]);
+  assert.equal(sentBodies.length, 1);
+  const sent = sentBodies[0] as { msg?: { item_list?: Array<{ type?: number; file_item?: { file_name?: string; len?: string; media?: { full_url?: string; encrypt_type?: number } } }> } };
+  const item = sent.msg?.item_list?.[0];
+  assert.equal(item?.type, MessageItemType.FILE);
+  assert.equal(item?.file_item?.file_name, "big answers.docx");
+  assert.equal(item?.file_item?.len, String(original.length));
+  assert.equal(item?.file_item?.media?.encrypt_type, 0);
+  assert.match(item?.file_item?.media?.full_url ?? "", /^https:\/\/files\.example\.test\/wechat\/\d{4}-\d{2}-\d{2}\/[a-f0-9]{16}-big%20answers\.docx$/);
+
+  const publishedUrl = new URL(item?.file_item?.media?.full_url ?? "");
+  const publishedSegments = publishedUrl.pathname.split("/").slice(-2).map((segment) => decodeURIComponent(segment));
+  const publishedPath = path.join(publicDir, ...publishedSegments);
+  assert.deepEqual(fs.readFileSync(publishedPath), original);
+});
+
+test("sendMediaFile preserves original image through public fallback before lossy delivery image", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wechat-codex-outbound-"));
+  const publicDir = path.join(tmp, "public");
+  const pngPath = path.join(tmp, "wide poster.png");
+  await sharp({
+    create: {
+      width: 320,
+      height: 180,
+      channels: 3,
+      background: "#446688",
+    },
+  }).png({ compressionLevel: 0 }).toFile(pngPath);
+  const original = fs.readFileSync(pngPath);
+
+  const uploadTypes: number[] = [];
+  const sentBodies: unknown[] = [];
+  const client = {
+    getUploadUrl: async ({ body }: { body: { media_type: number } }) => {
+      uploadTypes.push(body.media_type);
+      return { upload_full_url: `https://upload.example/${uploadTypes.length}` };
+    },
+    sendMessage: async ({ body }: { body: unknown }) => {
+      sentBodies.push(body);
+      return {};
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response("cdn rejects this image", { status: 500 })) as typeof fetch;
+
+  try {
+    await sendMediaFile({
+      client: client as never,
+      token: "token",
+      toUserId: "user-1",
+      filePath: pngPath,
+      cdnBaseUrl: "https://cdn.example.test",
+      uploadsDir: tmp,
+      maxBytes: 100 * 1024 * 1024,
+      publicArtifact: {
+        dir: publicDir,
+        baseUrl: "https://files.example.test/wechat",
+      },
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(uploadTypes, [
+    UploadMediaType.IMAGE,
+    UploadMediaType.IMAGE,
+    UploadMediaType.IMAGE,
+    UploadMediaType.FILE,
+    UploadMediaType.FILE,
+    UploadMediaType.FILE,
+  ]);
+  assert.equal(sentBodies.length, 1);
+  const sent = sentBodies[0] as { msg?: { item_list?: Array<{ type?: number; file_item?: { file_name?: string; media?: { full_url?: string } } }> } };
+  const item = sent.msg?.item_list?.[0];
+  assert.equal(item?.type, MessageItemType.FILE);
+  assert.equal(item?.file_item?.file_name, "wide poster.png");
+
+  const publishedUrl = new URL(item?.file_item?.media?.full_url ?? "");
+  const publishedSegments = publishedUrl.pathname.split("/").slice(-2).map((segment) => decodeURIComponent(segment));
+  const publishedPath = path.join(publicDir, ...publishedSegments);
+  assert.deepEqual(fs.readFileSync(publishedPath), original);
+});
+
 test("sendMediaFile creates a JPEG delivery image after image and file upload fail", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wechat-codex-outbound-"));
   const pngPath = path.join(tmp, "large.png");

@@ -27,6 +27,8 @@ export interface AppConfig {
   inboundMergeWindowMs: number;
   downloadMedia: boolean;
   mediaMaxBytes: number;
+  publicArtifactDir?: string;
+  publicArtifactBaseUrl?: string;
   typingEnabled: boolean;
   workingNotice: boolean;
   groupTrigger: string;
@@ -68,6 +70,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, cwd = process.c
     inboundMergeWindowMs: positiveInt(env.WECHAT_CODEX_INBOUND_MERGE_WINDOW_MS, 15_000),
     downloadMedia: parseBoolean(env.WECHAT_CODEX_DOWNLOAD_MEDIA, true),
     mediaMaxBytes: positiveInt(env.WECHAT_CODEX_MEDIA_MAX_BYTES, 100 * 1024 * 1024),
+    publicArtifactDir: resolvePath(env.WECHAT_CODEX_PUBLIC_ARTIFACT_DIR, cwd),
+    publicArtifactBaseUrl: trimOptionalTrailingSlash(env.WECHAT_CODEX_PUBLIC_ARTIFACT_BASE_URL),
     typingEnabled: parseBoolean(env.WECHAT_CODEX_TYPING_ENABLED, true),
     workingNotice: parseBoolean(env.WECHAT_CODEX_WORKING_NOTICE, false),
     groupTrigger: env.WECHAT_CODEX_GROUP_TRIGGER === undefined ? "@codex" : env.WECHAT_CODEX_GROUP_TRIGGER.trim(),
@@ -86,6 +90,11 @@ function resolvePath(value: string | undefined, cwd: string): string | undefined
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/g, "");
+}
+
+function trimOptionalTrailingSlash(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? trimTrailingSlash(normalized) : undefined;
 }
 
 function positiveInt(value: string | undefined, fallback: number): number {
